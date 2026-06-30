@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import blogApi, { type CommentDto } from '../../../api/blogApi';
 import { useAuth } from '../../../contexts/AuthContext';
 import { getImageUrl } from '../../../utils/imageUrl';
+import { useToast, ToastContainer } from '../../../components/Toast';
 
 // ─── Reading Progress Bar ─────────────────────────────────────────────────────
 function ReadingProgress() {
@@ -30,17 +31,31 @@ function ReadingProgress() {
   );
 }
 
+const REACTION_MAP: Record<string, { label: string; colorClass: string }> = {
+  '👍': { label: 'Thích', colorClass: 'text-blue-600 font-medium' },
+  '❤️': { label: 'Yêu thích', colorClass: 'text-rose-600 font-semibold' },
+  '😂': { label: 'Haha', colorClass: 'text-amber-500 font-medium' },
+  '😮': { label: 'Ngạc nhiên', colorClass: 'text-amber-500 font-medium' },
+  '😢': { label: 'Buồn', colorClass: 'text-amber-500 font-medium' },
+  '😡': { label: 'Phẫn nộ', colorClass: 'text-orange-600 font-semibold' },
+};
+
 // ─── Comment Item ─────────────────────────────────────────────────────────────
 function CommentItem({
   comment,
   postId,
   onReply,
+  toast,
 }: {
   comment: CommentDto;
   postId?: string;
   onReply?: (parentId: string, authorName: string) => void;
+  toast: any;
 }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+  const isAuthor = user && user.username === comment.author?.username;
+  const isAdmin = user && user.role === 'ADMIN';
+  const canDelete = isAuthor || isAdmin;
   const [isExpanded, setIsExpanded] = useState(true);
   const queryClient = useQueryClient();
   const [showReactionPicker, setShowReactionPicker] = useState(false);
@@ -72,6 +87,34 @@ function CommentItem({
     }
   });
 
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [reportReason, setReportReason] = useState('SPAM');
+  const [reportDetail, setReportDetail] = useState('');
+
+  const reportCommentMutation = useMutation({
+    mutationFn: (req: { reason: string; detail?: string }) => blogApi.reportComment(postId!, comment.id, req),
+    onSuccess: () => {
+      toast.success('Báo cáo vi phạm thành công!', 'Cảm ơn đóng góp của bạn, ban quản trị sẽ sớm xem xét.');
+      setIsReportModalOpen(false);
+      setReportDetail('');
+    },
+    onError: (err: any) => {
+      toast.error('Báo cáo thất bại', err.response?.data?.message || 'Có lỗi xảy ra, vui lòng thử lại.');
+    }
+  });
+
+  const handleSendReport = (e: React.FormEvent) => {
+    e.preventDefault();
+    reportCommentMutation.mutate({ reason: reportReason, detail: reportDetail });
+  };
+
+  const deleteCommentMutation = useMutation({
+    mutationFn: () => blogApi.deleteComment(postId!, comment.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['comments', postId] });
+    }
+  });
+
   const handleReact = (emoji: string) => {
     if (!postId || !isAuthenticated) return;
     reactionMutation.mutate(emoji);
@@ -83,6 +126,13 @@ function CommentItem({
       removeReactionMutation.mutate();
     } else {
       reactionMutation.mutate('👍');
+    }
+  };
+
+  const handleDeleteComment = () => {
+    if (!postId || !isAuthenticated) return;
+    if (window.confirm('Bạn có chắc chắn muốn thu hồi bình luận này không?')) {
+      deleteCommentMutation.mutate();
     }
   };
 
@@ -99,13 +149,13 @@ function CommentItem({
   const authorDisplayName = comment.author?.fullName || comment.author?.username || 'Unknown';
 
   return (
-    <div className="group">
+    <div id={`comment-${comment.id}`} className="group">
       <div className="flex gap-3">
         <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#d8e2ff] text-xs font-bold uppercase text-[#0058be]">
           {authorDisplayName.charAt(0)}
         </div>
         <div className="flex-1">
-          <div className="relative rounded-xl border border-[#E5E7EB] bg-white px-4 py-3">
+          <div className="relative rounded-xl border border-[#E5E7EB] bg-white px-4 py-3 comment-box-container transition-all duration-300">
             <div className="mb-2 flex items-center gap-2">
               <span className="text-sm font-semibold text-[#191c1d]">{authorDisplayName}</span>
               <span className="text-xs text-[#727785]">
@@ -116,9 +166,22 @@ function CommentItem({
                 })}
               </span>
             </div>
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-[#424754]">
-              {comment.content}
-            </p>
+            {comment.content && (
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-[#424754]">
+                {comment.content}
+              </p>
+            )}
+
+            {comment.imageUrl && (
+              <div className="mt-2 overflow-hidden rounded-lg border border-[#E5E7EB] max-w-xs bg-gray-50">
+                <img
+                  src={getImageUrl(comment.imageUrl)}
+                  alt="Ảnh đính kèm"
+                  className="max-h-60 w-auto object-contain cursor-zoom-in rounded"
+                  onClick={() => window.open(getImageUrl(comment.imageUrl), '_blank')}
+                />
+              </div>
+            )}
 
             {totalReactions > 0 && (
               <div className="absolute right-2 -bottom-3 flex items-center gap-1 rounded-full bg-white px-1.5 py-0.5 shadow-sm border border-[#E5E7EB] text-[11px] font-medium text-[#727785] z-10">
@@ -141,8 +204,8 @@ function CommentItem({
                 <button
                   onClick={handleTogglePrimaryReact}
                   className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md transition-colors ${comment.userReaction
-                      ? 'bg-[#f0f5ff] text-[#0058be]'
-                      : 'text-[#727785] hover:bg-[#f0f5ff] hover:text-[#0058be]'
+                    ? 'bg-[#f0f5ff]'
+                    : 'text-[#727785] hover:bg-[#f0f5ff] hover:text-[#0058be]'
                     }`}
                 >
                   {comment.userReaction ? (
@@ -150,7 +213,9 @@ function CommentItem({
                   ) : (
                     <span className="material-symbols-outlined text-sm">thumb_up</span>
                   )}
-                  {comment.userReaction ? 'Đã thả cảm xúc' : 'Thích'}
+                  <span className={comment.userReaction ? (REACTION_MAP[comment.userReaction]?.colorClass || 'text-[#0058be]') : ''}>
+                    {comment.userReaction ? (REACTION_MAP[comment.userReaction]?.label || 'Đã phản hồi') : ''}
+                  </span>
                 </button>
 
                 {showReactionPicker && (
@@ -175,7 +240,29 @@ function CommentItem({
                 className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-[#727785] hover:bg-[#f0f5ff] hover:text-[#0058be] rounded-md transition-colors"
               >
                 <span className="material-symbols-outlined text-sm">reply</span>
-                Trả lời
+
+              </button>
+            )}
+
+            {isAuthenticated && postId && canDelete && (
+              <button
+                onClick={handleDeleteComment}
+                disabled={deleteCommentMutation.isPending}
+                className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-[#727785] hover:bg-rose-50 hover:text-rose-600 rounded-md transition-colors disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-sm">delete</span>
+
+              </button>
+            )}
+
+            {isAuthenticated && postId && !isAuthor && (
+              <button
+                onClick={() => setIsReportModalOpen(true)}
+                disabled={reportCommentMutation.isPending}
+                className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-[#727785] hover:bg-amber-50 hover:text-[#d97706] rounded-md transition-colors disabled:opacity-50"
+                title="Báo cáo bình luận vi phạm"
+              >
+                <span className="material-symbols-outlined text-sm">flag</span>
               </button>
             )}
 
@@ -187,7 +274,7 @@ function CommentItem({
                 <span className="material-symbols-outlined text-sm">
                   {isExpanded ? 'expand_less' : 'expand_more'}
                 </span>
-                {isExpanded ? 'Thu gọn' : `Xem ${comment.replies.length} câu trả lời`}
+                {isExpanded ? '' : ` ${comment.replies.length} câu trả lời`}
               </button>
             )}
           </div>
@@ -198,8 +285,106 @@ function CommentItem({
       {isExpanded && comment.replies && comment.replies.length > 0 && (
         <div className="ml-11 mt-3 space-y-3 border-l-2 border-[#d8e2ff] pl-4">
           {comment.replies.map((reply) => (
-            <CommentItem key={reply.id} comment={reply} postId={postId} onReply={onReply} />
+            <CommentItem key={reply.id} comment={reply} postId={postId} onReply={onReply} toast={toast} />
           ))}
+        </div>
+      )}
+
+      {/* Report Modal */}
+      {isReportModalOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-[#191c1d]/40 backdrop-blur-sm"
+            onClick={() => setIsReportModalOpen(false)}
+          />
+          {/* Modal Container */}
+          <div className="relative w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-[#E5E7EB] px-6 py-4">
+              <h3 className="text-base font-bold text-[#191c1d] flex items-center gap-2">
+                <span className="material-symbols-outlined text-amber-500">warning</span>
+                Báo cáo bình luận vi phạm
+              </h3>
+              <button
+                onClick={() => setIsReportModalOpen(false)}
+                className="flex h-7 w-7 items-center justify-center rounded-full text-[#727785] hover:bg-[#f3f4f5] transition-colors"
+              >
+                <span className="material-symbols-outlined text-sm">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSendReport} className="p-6">
+              <p className="mb-4 text-xs text-[#727785] leading-relaxed">
+                Vui lòng chọn lý do báo cáo bình luận này. Các báo cáo chính xác giúp chúng tôi giữ môi trường cộng đồng văn minh.
+              </p>
+
+              <div className="mb-5 space-y-2.5">
+                {[
+                  { value: 'SPAM', label: 'Spam / Quảng cáo', desc: 'Nội dung rác, quảng cáo không mong muốn hoặc link độc hại.' },
+                  { value: 'OFFENSIVE', label: 'Ngôn từ thô tục / Kích động', desc: 'Chửi thề, lăng mạ, phân biệt đối xử hoặc thù hận.' },
+                  { value: 'HARASSMENT', label: 'Quấy rối / Đe dọa', desc: 'Công kích cá nhân, đe dọa hoặc làm phiền người khác.' },
+                  { value: 'MISLEADING', label: 'Thông tin sai lệch', desc: 'Đưa tin giả, sai sự thật gây hoang mang dư luận.' },
+                  { value: 'OTHER', label: 'Lý do khác', desc: 'Các vi phạm khác không nằm trong các danh mục trên.' },
+                ].map(({ value, label, desc }) => (
+                  <label
+                    key={value}
+                    className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-all ${reportReason === value ? 'border-[#0058be] bg-[#EFF6FF]' : 'border-[#E5E7EB] hover:bg-[#f8f9fa]'
+                      }`}
+                  >
+                    <input
+                      type="radio"
+                      name="reportReason"
+                      value={value}
+                      checked={reportReason === value}
+                      onChange={(e) => setReportReason(e.target.value)}
+                      className="mt-0.5 h-4 w-4 shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-[#191c1d]">{label}</div>
+                      <div className="text-[10px] text-[#727785] mt-0.5 leading-snug">{desc}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+
+              {/* Textarea chi tiết */}
+              <div className="mb-6">
+                <label className="block text-xs font-bold text-[#191c1d] mb-1.5">
+                  Mô tả chi tiết (tùy chọn)
+                </label>
+                <textarea
+                  value={reportDetail}
+                  onChange={(e) => setReportDetail(e.target.value)}
+                  placeholder={
+                    reportReason === 'OTHER'
+                      ? 'Vui lòng cung cấp thêm thông tin chi tiết về vi phạm...'
+                      : 'Cung cấp thêm ngữ cảnh nếu cần thiết...'
+                  }
+                  required={reportReason === 'OTHER'}
+                  rows={3}
+                  maxLength={500}
+                  className="w-full rounded-xl border border-[#c2c6d6] px-3 py-2 text-xs text-[#191c1d] outline-none focus:border-[#0058be] focus:ring-2 focus:ring-[#0058be]/10 transition-all resize-none"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsReportModalOpen(false)}
+                  className="flex-1 rounded-xl border border-[#c2c6d6] bg-white py-2.5 text-xs font-medium text-[#424754] hover:bg-[#f3f4f5] transition-colors"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  disabled={reportCommentMutation.isPending}
+                  className="flex-1 rounded-xl bg-[#ba1a1a] py-2.5 text-xs font-medium text-white transition-all hover:bg-[#a01616] disabled:opacity-50"
+                >
+                  {reportCommentMutation.isPending ? 'Đang gửi...' : 'Gửi báo cáo'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>
@@ -221,10 +406,31 @@ function BlogDetailPage() {
   const { isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
   const commentTextRef = useRef<HTMLTextAreaElement>(null);
+  const { toasts, toast, removeToast } = useToast();
 
   const [commentContent, setCommentContent] = useState('');
   const [replyTo, setReplyTo] = useState<{ parentId: string; authorName: string } | null>(null);
   const [commentPage, setCommentPage] = useState(0);
+  const [newCommentId, setNewCommentId] = useState<string | null>(null);
+  const [commentImageUrl, setCommentImageUrl] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [showCommentEmojiPicker, setShowCommentEmojiPicker] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingImage(true);
+    try {
+      const res = await blogApi.uploadImage(file);
+      setCommentImageUrl(res.data.url);
+    } catch (err) {
+      alert('Tải ảnh lên thất bại. Vui lòng thử lại!');
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
 
   const [isMobileTocOpen, setIsMobileTocOpen] = useState(false);
   const [toc, setToc] = useState<ToCItem[]>([]);
@@ -257,6 +463,209 @@ function BlogDetailPage() {
     }
   }, [post?.id, post?.likesCount]);
 
+  // AI Summarizer state and handler
+  const [aiSummary, setAiSummary] = useState<string>('');
+  const [isLoadingAiSummary, setIsLoadingAiSummary] = useState(false);
+
+  const handleGetAiSummary = async () => {
+    if (!post?.id) return;
+    setIsLoadingAiSummary(true);
+    try {
+      const summary = await blogApi.summarizePost(post.id);
+      setAiSummary(summary);
+    } catch (err: any) {
+      console.error(err);
+      alert('Không thể thực hiện tóm tắt bài viết lúc này. Vui lòng thử lại sau.');
+    } finally {
+      setIsLoadingAiSummary(false);
+    }
+  };
+
+  useEffect(() => {
+    setAiSummary('');
+  }, [post?.id]);
+
+  // TTS State & Logic
+  const [isTtsPlaying, setIsTtsPlaying] = useState(false);
+  const [isTtsPaused, setIsTtsPaused] = useState(false);
+  const [ttsRate, setTtsRate] = useState(1);
+  const [sentences, setSentences] = useState<string[]>([]);
+  const [currentSentenceIndex, setCurrentSentenceIndex] = useState(0);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoiceName, setSelectedVoiceName] = useState<string>('');
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  // Load and cache voices on mount
+  useEffect(() => {
+    const synth = window.speechSynthesis;
+    if (!synth) return;
+
+    const updateVoices = () => {
+      const allVoices = synth.getVoices();
+      setVoices(allVoices);
+
+      // Auto-select Vietnamese voice if available
+      if (allVoices.length > 0) {
+        const viVoice = allVoices.find(voice => {
+          const lang = voice.lang.toLowerCase();
+          const name = voice.name.toLowerCase();
+          return lang === 'vi-vn' || lang === 'vi_vn' || lang.startsWith('vi') || name.includes('vietnam') || name.includes('tiếng việt');
+        });
+        if (viVoice) {
+          setSelectedVoiceName(viVoice.name);
+        } else {
+          // Fallback to first available voice or default
+          const defaultVoice = allVoices.find(v => v.default) || allVoices[0];
+          if (defaultVoice) {
+            setSelectedVoiceName(defaultVoice.name);
+          }
+        }
+      }
+    };
+
+    updateVoices();
+    if (synth.onvoiceschanged !== undefined) {
+      synth.onvoiceschanged = updateVoices;
+    }
+  }, []);
+
+  // Helper to split text into sentences cleanly
+  const getSentences = (text: string) => {
+    return text
+      .split(/[.!?;\n]+/)
+      .map(s => s.trim())
+      .filter(s => s.length > 3); // Filter out extremely short texts/artifacts
+  };
+
+  // Reset/stop TTS when post changes
+  useEffect(() => {
+    window.speechSynthesis?.cancel();
+    setSentences([]);
+    setCurrentSentenceIndex(0);
+    setIsTtsPlaying(false);
+    setIsTtsPaused(false);
+  }, [post?.id]);
+
+  const playSentence = (index: number, sentenceList: string[], rate: number) => {
+    if (index < 0 || index >= sentenceList.length) {
+      setIsTtsPlaying(false);
+      setIsTtsPaused(false);
+      setCurrentSentenceIndex(0);
+      return;
+    }
+
+    const synth = window.speechSynthesis;
+    synth.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(sentenceList[index]);
+    utteranceRef.current = utterance;
+
+    // Use selected voice or search for Vietnamese fallback
+    const activeVoices = voices.length > 0 ? voices : synth.getVoices();
+    let selectedVoice = activeVoices.find(v => v.name === selectedVoiceName);
+    if (!selectedVoice) {
+      selectedVoice = activeVoices.find(voice => {
+        const lang = voice.lang.toLowerCase();
+        const name = voice.name.toLowerCase();
+        return lang === 'vi-vn' || lang === 'vi_vn' || lang.startsWith('vi') || name.includes('vietnam') || name.includes('tiếng việt');
+      });
+    }
+
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
+      utterance.lang = selectedVoice.lang;
+    } else {
+      utterance.lang = 'vi-VN';
+    }
+
+    utterance.rate = rate;
+
+    utterance.onend = () => {
+      const nextIndex = index + 1;
+      setCurrentSentenceIndex(nextIndex);
+      playSentence(nextIndex, sentenceList, rate);
+    };
+
+    utterance.onerror = (e) => {
+      if (e.error !== 'interrupted') {
+        setIsTtsPlaying(false);
+        setIsTtsPaused(false);
+      }
+    };
+
+    synth.speak(utterance);
+  };
+
+  const handlePlayPauseTts = () => {
+    if (!post?.contentMarkdown) return;
+
+    const synth = window.speechSynthesis;
+    if (!synth) {
+      alert('Trình duyệt của bạn không hỗ trợ chức năng đọc tiếng nói.');
+      return;
+    }
+
+    // If currently playing (and not paused), then pause
+    if (isTtsPlaying && !isTtsPaused) {
+      synth.pause();
+      setIsTtsPaused(true);
+      return;
+    }
+
+    // If currently paused, then resume
+    if (isTtsPlaying && isTtsPaused) {
+      synth.resume();
+      setIsTtsPaused(false);
+      return;
+    }
+
+    // Start a new session
+    let activeSentences = sentences;
+    if (sentences.length === 0) {
+      const plainText = post.title + ". " + (post.summary ? post.summary + ". " : "") +
+        post.contentMarkdown
+          .replace(/#{1,6}\s+/g, '') // remove headings hashes
+          .replace(/\*\*|__/g, '') // remove bold
+          .replace(/\*|_/g, '') // remove italic
+          .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // remove links
+          .replace(/`{1,3}[^`]*`{1,3}/g, '') // remove code blocks
+          .replace(/!\[[^\]]*\]\([^)]+\)/g, ''); // remove images
+
+      activeSentences = getSentences(plainText);
+      setSentences(activeSentences);
+    }
+
+    setIsTtsPlaying(true);
+    setIsTtsPaused(false);
+
+    const startIndex = currentSentenceIndex >= activeSentences.length ? 0 : currentSentenceIndex;
+    setCurrentSentenceIndex(startIndex);
+    playSentence(startIndex, activeSentences, ttsRate);
+  };
+
+  const handleStopTts = () => {
+    window.speechSynthesis?.cancel();
+    setIsTtsPlaying(false);
+    setIsTtsPaused(false);
+    setCurrentSentenceIndex(0);
+  };
+
+  const handleSeekTts = (index: number) => {
+    setCurrentSentenceIndex(index);
+    if (isTtsPlaying) {
+      setIsTtsPaused(false);
+      playSentence(index, sentences, ttsRate);
+    }
+  };
+
+  const handleChangeTtsRate = (rate: number) => {
+    setTtsRate(rate);
+    if (isTtsPlaying && sentences.length > 0) {
+      setIsTtsPaused(false);
+      playSentence(currentSentenceIndex, sentences, rate);
+    }
+  };
+
   // Fetch comments
   const { data: commentsData, isLoading: commentsLoading } = useQuery({
     queryKey: ['comments', post?.id, commentPage],
@@ -264,6 +673,30 @@ function BlogDetailPage() {
       blogApi.getCommentsByPostId(post!.id, { pageNo: commentPage, pageSize: 10 }).then((r) => r.data),
     enabled: !!post?.id,
   });
+
+  // Tự động cuộn và highlight bình luận bị báo cáo khi tải xong
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash && hash.startsWith('#comment-') && commentsData) {
+      const commentId = hash.replace('#comment-', '');
+
+      const timer = setTimeout(() => {
+        const element = document.getElementById(`comment-${commentId}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+          const commentBox = element.querySelector('.comment-box-container') || element;
+          commentBox.classList.add('animate-highlight-flash');
+
+          setTimeout(() => {
+            commentBox.classList.remove('animate-highlight-flash');
+          }, 3000);
+        }
+      }, 400); // 400ms delay đảm bảo DOM render hoàn tất
+
+      return () => clearTimeout(timer);
+    }
+  }, [window.location.hash, commentsData]);
 
   // Fetch related posts from same category
   const { data: relatedPostsResponse } = useQuery({
@@ -361,14 +794,41 @@ function BlogDetailPage() {
 
   // Submit comment mutation
   const submitComment = useMutation({
-    mutationFn: (data: { content: string; parentId?: string | null }) =>
+    mutationFn: (data: { content?: string; imageUrl?: string; parentId?: string | null }) =>
       blogApi.createComment(post!.id, data),
-    onSuccess: () => {
+    onSuccess: (res) => {
       setCommentContent('');
+      setCommentImageUrl(null);
       setReplyTo(null);
+      setShowCommentEmojiPicker(false);
       queryClient.invalidateQueries({ queryKey: ['comments', post?.id] });
+      if (res?.data?.id) {
+        setNewCommentId(res.data.id);
+      }
     },
   });
+
+  useEffect(() => {
+    if (newCommentId) {
+      let count = 0;
+      const interval = setInterval(() => {
+        const element = document.getElementById(`comment-${newCommentId}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.classList.add('bg-blue-50/50', 'transition-all', 'duration-1000');
+          setTimeout(() => {
+            element.classList.remove('bg-blue-50/50');
+          }, 2000);
+          setNewCommentId(null);
+          clearInterval(interval);
+        } else if (count > 10) {
+          clearInterval(interval);
+        }
+        count++;
+      }, 100);
+      return () => clearInterval(interval);
+    }
+  }, [commentsData, newCommentId]);
 
   const handleReply = (parentId: string, authorName: string) => {
     setReplyTo({ parentId, authorName });
@@ -378,9 +838,10 @@ function BlogDetailPage() {
 
   const handleCommentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!commentContent.trim()) return;
+    if (!commentContent.trim() && !commentImageUrl) return;
     submitComment.mutate({
-      content: commentContent.trim(),
+      content: commentContent.trim() || undefined,
+      imageUrl: commentImageUrl ?? undefined,
       parentId: replyTo?.parentId ?? null,
     });
   };
@@ -607,6 +1068,117 @@ function BlogDetailPage() {
             <p className="mt-4 text-lg leading-relaxed text-[#424754]">{post.summary}</p>
           )}
 
+          {/* Audio Reader */}
+          {post && (
+            <div className="mt-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 rounded-lg border border-[#e2e8f0] bg-slate-50/80 p-4 text-xs text-[#475569] shadow-sm backdrop-blur-sm animate-fade-in">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[#0058be] text-[18px]">volume_up</span>
+                <span className="font-semibold text-slate-800">Nghe đọc bài viết</span>
+              </div>
+
+              <div className="flex flex-1 flex-wrap items-center justify-end gap-3 w-full lg:w-auto">
+                {/* Seek Bar (Slider) */}
+                <div className="flex flex-1 items-center gap-2 px-2 min-w-[200px] w-full">
+                  <input
+                    type="range"
+                    min="0"
+                    max={Math.max(0, sentences.length - 1)}
+                    value={currentSentenceIndex}
+                    onChange={(e) => handleSeekTts(parseInt(e.target.value))}
+                    disabled={sentences.length === 0}
+                    className="h-1.5 flex-1 cursor-pointer appearance-none rounded-lg bg-slate-200 accent-[#0058be] outline-none transition-all"
+                  />
+                  <span className="text-[10px] font-medium text-[#727785] tabular-nums select-none min-w-[32px]">
+                    {sentences.length > 0 ? `${currentSentenceIndex + 1}/${sentences.length}` : '0/0'}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    onClick={handlePlayPauseTts}
+                    className="flex h-8 items-center justify-center gap-1.5 rounded-md bg-[#0058be] px-3 font-semibold text-white hover:brightness-110 active:scale-95 transition-all shadow-sm cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-sm">
+                      {isTtsPlaying ? (isTtsPaused ? 'play_arrow' : 'pause') : 'play_arrow'}
+                    </span>
+                    {isTtsPlaying ? (isTtsPaused ? 'Tiếp tục' : 'Tạm dừng') : 'Đọc bài viết'}
+                  </button>
+
+                  {isTtsPlaying && (
+                    <button
+                      onClick={handleStopTts}
+                      className="flex h-8 w-8 items-center justify-center rounded-md border border-[#c2c6d6] bg-white text-slate-600 hover:bg-[#f3f4f5] active:scale-95 transition-all cursor-pointer"
+                      title="Dừng đọc"
+                    >
+                      <span className="material-symbols-outlined text-sm">stop</span>
+                    </button>
+                  )}
+
+                  {/* Voice Selector */}
+                  {voices.length > 0 && (
+                    <div className="flex items-center gap-1 border-l border-[#c2c6d6] pl-2 max-w-[160px]">
+                      <span className="text-[10px] text-[#727785] select-none">Giọng:</span>
+                      <select
+                        value={selectedVoiceName}
+                        onChange={(e) => {
+                          setSelectedVoiceName(e.target.value);
+                          if (isTtsPlaying && sentences.length > 0) {
+                            setIsTtsPaused(false);
+                            const activeVoices = voices.length > 0 ? voices : window.speechSynthesis.getVoices();
+                            const newVoice = activeVoices.find(v => v.name === e.target.value);
+                            if (newVoice) {
+                              const synth = window.speechSynthesis;
+                              synth.cancel();
+                              const utterance = new SpeechSynthesisUtterance(sentences[currentSentenceIndex]);
+                              utteranceRef.current = utterance;
+                              utterance.voice = newVoice;
+                              utterance.lang = newVoice.lang;
+                              utterance.rate = ttsRate;
+                              utterance.onend = () => {
+                                const nextIndex = currentSentenceIndex + 1;
+                                setCurrentSentenceIndex(nextIndex);
+                                playSentence(nextIndex, sentences, ttsRate);
+                              };
+                              utterance.onerror = (err) => {
+                                if (err.error !== 'interrupted') {
+                                  setIsTtsPlaying(false);
+                                  setIsTtsPaused(false);
+                                }
+                              };
+                              synth.speak(utterance);
+                            }
+                          }
+                        }}
+                        className="h-8 rounded-md border border-[#c2c6d6] bg-white px-1.5 text-[11px] font-medium text-slate-700 outline-none cursor-pointer max-w-[120px] truncate"
+                      >
+                        {voices.map((voice) => (
+                          <option key={voice.name} value={voice.name}>
+                            {voice.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-1 border-l border-[#c2c6d6] pl-2">
+                    <span className="text-[10px] text-[#727785] select-none">Tốc độ:</span>
+                    <select
+                      value={ttsRate}
+                      onChange={(e) => handleChangeTtsRate(parseFloat(e.target.value))}
+                      className="h-8 rounded-md border border-[#c2c6d6] bg-white px-1.5 text-xs font-medium text-slate-700 outline-none cursor-pointer"
+                    >
+                      <option value="0.75">0.75x</option>
+                      <option value="1">1.0x</option>
+                      <option value="1.25">1.25x</option>
+                      <option value="1.5">1.5x</option>
+                      <option value="2">2.0x</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Meta */}
           <div className="mt-6 flex flex-wrap items-center gap-4 border-y border-[#E5E7EB] py-4">
             <div className="flex items-center gap-2">
@@ -635,11 +1207,10 @@ function BlogDetailPage() {
                 onClick={handleLikeClick}
                 disabled={toggleLike.isPending}
                 title={isAuthenticated ? (isLiked ? 'Bỏ thích' : 'Thích bài viết') : 'Đăng nhập để thích bài viết'}
-                className={`flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${
-                  isLiked
-                    ? 'border-rose-500 bg-rose-50 text-rose-600 hover:bg-rose-100'
-                    : 'border-[#c2c6d6] bg-white text-[#424754] hover:bg-[#f3f4f5]'
-                }`}
+                className={`flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${isLiked
+                  ? 'border-rose-500 bg-rose-50 text-rose-600 hover:bg-rose-100'
+                  : 'border-[#c2c6d6] bg-white text-[#424754] hover:bg-[#f3f4f5]'
+                  }`}
               >
                 <span
                   className="material-symbols-outlined text-[18px]"
@@ -700,6 +1271,60 @@ function BlogDetailPage() {
                     </a>
                   ))}
                 </nav>
+              )}
+            </div>
+          )}
+
+          {/* ── AI Summarizer ────────────────────────────────────── */}
+          {post && (
+            <div className="mt-6 rounded-xl border border-[#d8e2ff] bg-gradient-to-br from-[#f0f4f9] to-[#ffffff] p-5 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="material-symbols-outlined text-[#0058be] text-[24px] animate-pulse">sparkles</span>
+                  <div>
+                    <h3 className="font-bold text-[#191c1d] text-sm flex items-center gap-1.5">
+                      Trợ lý tóm tắt AI
+                      <span className="rounded bg-[#d8e2ff] px-2 py-0.5 text-[10px] font-bold text-[#0058be]">BETA</span>
+                    </h3>
+                    <p className="text-xs text-[#727785]">Tóm tắt ý chính của bài viết bằng công nghệ AI</p>
+                  </div>
+                </div>
+
+                {!aiSummary && (
+                  <button
+                    onClick={handleGetAiSummary}
+                    disabled={isLoadingAiSummary}
+                    className="flex items-center justify-center gap-1.5 rounded-lg bg-[#0058be] px-4 py-2 text-xs font-bold text-white hover:brightness-110 disabled:opacity-50 transition-all shadow-sm shrink-0 cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-sm">auto_awesome</span>
+                    {isLoadingAiSummary ? 'Đang tóm tắt...' : 'Tóm tắt bài viết'}
+                  </button>
+                )}
+              </div>
+
+              {isLoadingAiSummary && (
+                <div className="mt-4 flex items-center gap-2 text-xs text-[#727785]">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#0058be] border-t-transparent" />
+                  Đang phân tích nội dung bài viết và tạo tóm tắt...
+                </div>
+              )}
+
+              {aiSummary && (
+                <div className="mt-4 border-t border-[#d8e2ff] pt-4 animate-fade-in">
+                  <div className="prose prose-sm text-xs leading-relaxed text-[#424754]" style={{ whiteSpace: 'pre-line' }}>
+                    {aiSummary}
+                  </div>
+                  <div className="mt-3 flex items-center justify-between text-[10px] text-[#727785]">
+                    <span>Được cung cấp bởi Google Gemini AI</span>
+                    <button
+                      onClick={() => { setAiSummary(''); }}
+                      className="flex items-center gap-0.5 hover:text-[#0058be] transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-xs">refresh</span>
+                      Tóm tắt lại
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           )}
@@ -824,10 +1449,84 @@ function BlogDetailPage() {
                   placeholder="Viết bình luận của bạn..."
                   className="w-full resize-none rounded-lg border border-[#c2c6d6] px-4 py-3 text-sm text-[#191c1d] placeholder:text-[#727785] focus:border-[#0058be] focus:outline-none focus:ring-2 focus:ring-[#0058be]/10"
                 />
-                <div className="mt-3 flex items-center justify-between">
+
+                {commentImageUrl && (
+                  <div className="relative mt-3 inline-block rounded-lg border border-[#E5E7EB] p-1 bg-gray-50">
+                    <img
+                      src={getImageUrl(commentImageUrl)}
+                      alt="Ảnh đính kèm"
+                      className="h-20 w-auto rounded object-contain"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setCommentImageUrl(null)}
+                      className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-white shadow hover:bg-rose-600 transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-[12px] font-bold">close</span>
+                    </button>
+                  </div>
+                )}
+
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    {/* Nút đính kèm ảnh */}
+                    <button
+                      type="button"
+                      disabled={isUploadingImage || submitComment.isPending}
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex items-center gap-1.5 rounded-lg border border-[#c2c6d6] px-3 py-1.5 text-xs font-semibold text-[#424754] hover:bg-[#f3f4f5] disabled:opacity-50 transition-colors cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">image</span>
+                      {isUploadingImage ? 'Đang tải ảnh...' : ''}
+                    </button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageChange}
+                      className="hidden"
+                    />
+
+                    {/* Emoji Picker */}
+                    <div className="relative flex items-center">
+                      <button
+                        type="button"
+                        onClick={() => setShowCommentEmojiPicker(!showCommentEmojiPicker)}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#c2c6d6] text-[#424754] hover:bg-[#f3f4f5] transition-colors cursor-pointer"
+                        title="Thêm biểu cảm"
+                      >
+                        <span className="material-symbols-outlined text-[18px]">sentiment_satisfied</span>
+                      </button>
+
+                      {showCommentEmojiPicker && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-20"
+                            onClick={() => setShowCommentEmojiPicker(false)}
+                          />
+                          <div className="absolute bottom-full left-0 mb-2 z-30 flex flex-wrap gap-1 w-44 rounded-xl border border-[#E5E7EB] bg-white p-2 shadow-lg animate-fade-in-up">
+                            {['👍', '❤️', '😂', '😮', '😢', '😡', '🔥', '👏', '🎉', '💡', '🚀', '✨', '✔️', '❌', '👀', '💯'].map((emoji) => (
+                              <button
+                                key={emoji}
+                                type="button"
+                                onClick={() => {
+                                  setCommentContent((prev) => prev + emoji);
+                                  setShowCommentEmojiPicker(false);
+                                }}
+                                className="flex h-8 w-8 items-center justify-center rounded-full text-lg hover:bg-[#f0f5ff] hover:scale-115 transition-transform"
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
                   <button
                     type="submit"
-                    disabled={!commentContent.trim() || submitComment.isPending}
+                    disabled={(!commentContent.trim() && !commentImageUrl) || submitComment.isPending || isUploadingImage}
                     className="flex items-center gap-2 rounded-lg bg-[#0058be] px-5 py-2 text-sm font-medium text-white transition-all hover:brightness-110 disabled:opacity-50"
                   >
                     {submitComment.isPending ? 'Đang gửi...' : 'Gửi bình luận'}
@@ -870,7 +1569,7 @@ function BlogDetailPage() {
             ) : (
               <div className="space-y-4">
                 {commentsData?.content.map((comment) => (
-                  <CommentItem key={comment.id} comment={comment} postId={post?.id} onReply={handleReply} />
+                  <CommentItem key={comment.id} comment={comment} postId={post?.id} onReply={handleReply} toast={toast} />
                 ))}
 
                 {/* Load more comments */}
@@ -932,6 +1631,7 @@ function BlogDetailPage() {
           </aside>
         )}
       </div>
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
 
       {/* ── Article CSS ─────────────────────────────────────────── */}
       <style>{`
@@ -969,6 +1669,15 @@ function BlogDetailPage() {
         .prose-blog th { background: #f3f4f5; font-weight: 600; padding: 0.6rem 1rem; border: 1px solid #E5E7EB; }
         .prose-blog td { padding: 0.6rem 1rem; border: 1px solid #E5E7EB; }
         .prose-blog tr:nth-child(even) { background: #f8f9fa; }
+
+        @keyframes highlight-flash {
+          0% { background-color: #fef08a; border-color: #eab308; box-shadow: 0 0 16px rgba(234, 179, 8, 0.5); }
+          50% { background-color: #fef08a; border-color: #eab308; }
+          100% { background-color: #ffffff; }
+        }
+        .animate-highlight-flash {
+          animation: highlight-flash 3.5s ease-out forwards;
+        }
       `}</style>
       {/* ── Highlight & Share Popup ───────────────────────────────────────── */}
       {sharePopupOpen && (

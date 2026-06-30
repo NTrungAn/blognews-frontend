@@ -7,6 +7,7 @@ export interface Category {
   name: string;
   slug: string;
   postCount?: number;
+  description?: string;
 }
 
 export interface Tag {
@@ -35,6 +36,15 @@ export interface UserResponse {
   avatar: string;
   role: string;
   biography?: string;
+}
+
+export interface NotificationDto {
+  id: string;
+  type: 'COMMENT' | 'REACTION' | 'FOLLOW' | 'POST';
+  content: string;
+  targetUrl: string;
+  read: boolean;
+  createdAt: string;
 }
 
 export interface UserProfileResponse extends UserResponse {
@@ -108,6 +118,14 @@ export interface ArticleDto {
   tags: Tag[];
 }
 
+export interface CommentReportDto {
+  id: string;
+  reason: string;
+  detail?: string;
+  reporterUsername: string;
+  createdAt: string;
+}
+
 export interface CommentDto {
   id: string;
   content: string;
@@ -120,10 +138,20 @@ export interface CommentDto {
   parentId?: string | null;
   replies?: CommentDto[];
   reactionsCount?: Record<string, number>;
+  userReaction?: string;
+  imageUrl?: string;
+  reportCount?: number;
+  reports?: CommentReportDto[];
+  post?: {
+    id: string;
+    title: string;
+    slug: string;
+  };
 }
 
 export interface CommentRequest {
-  content: string;
+  content?: string;
+  imageUrl?: string;
   parentId?: string | null;
 }
 
@@ -169,6 +197,12 @@ const blogApi = {
   getPostById: (id: string) =>
     axiosInstance.get<ArticleDto>(`/posts/${id}`),
 
+  /** Tóm tắt bài viết bằng AI */
+  summarizePost: async (id: string): Promise<string> => {
+    const response = await axiosInstance.get<string>(`/posts/${id}/summarize`);
+    return response.data;
+  },
+
   /** Lấy tất cả danh mục */
   getCategories: () =>
     axiosInstance.get<Category[]>('/categories'),
@@ -208,6 +242,26 @@ const blogApi = {
   /** Gửi bình luận */
   createComment: (postId: string, data: CommentRequest) =>
     axiosInstance.post<CommentDto>(`/posts/${postId}/comments`, data),
+
+  /** Xoá bình luận (thu hồi) */
+  deleteComment: (postId: string, commentId: string) =>
+    axiosInstance.delete(`/posts/${postId}/comments/${commentId}`),
+
+  /** Lấy danh sách thông báo */
+  getNotifications: (params?: { pageNo?: number; pageSize?: number }) =>
+    axiosInstance.get<PageResponse<NotificationDto>>('/notifications', { params }),
+
+  /** Lấy số lượng thông báo chưa đọc */
+  getUnreadNotificationCount: () =>
+    axiosInstance.get<number>('/notifications/unread-count'),
+
+  /** Đánh dấu một thông báo đã đọc */
+  markNotificationAsRead: (id: string) =>
+    axiosInstance.put<void>(`/notifications/${id}/read`),
+
+  /** Đánh dấu tất cả thông báo đã đọc */
+  markAllNotificationsAsRead: () =>
+    axiosInstance.put<void>('/notifications/read-all'),
 
   /** Thêm/Cập nhật Reaction cho bình luận */
   addReaction: (postId: string, commentId: string, emoji: string) =>
@@ -277,6 +331,11 @@ const blogApi = {
     return response.data;
   },
 
+  getPopularAuthors: async (): Promise<PublicProfileResponse[]> => {
+    const response = await axiosInstance.get<PublicProfileResponse[]>('/users/popular');
+    return response.data;
+  },
+
   getAuthorPosts: async (username: string, pageNo = 0, pageSize = 10): Promise<PageResponse<ArticleDto>> => {
     const response = await axiosInstance.get<PageResponse<ArticleDto>>(`/users/${username}/posts`, {
       params: { pageNo, pageSize },
@@ -329,7 +388,7 @@ const blogApi = {
     axiosInstance.get<PageResponse<ArticleDto>>('/bookmarks/me', { params }),
 
   // ─── Quản lý User (Admin) ───
-  getAllUsers: (params?: { pageNo?: number; pageSize?: number; sortBy?: string; sortDir?: string }) =>
+  getAllUsers: (params?: { pageNo?: number; pageSize?: number; sortBy?: string; sortDir?: string; keyword?: string; role?: string }) =>
     axiosInstance.get<PageResponse<UserResponse>>('/users', { params }),
 
   updateUserRole: (id: string, role: string) =>
@@ -337,6 +396,25 @@ const blogApi = {
 
   deleteUser: (id: string) =>
     axiosInstance.delete(`/users/${id}`),
+
+  // ─── Quản lý Bình luận (Admin) ───
+  getAllComments: (params?: { pageNo?: number; pageSize?: number; keyword?: string }) =>
+    axiosInstance.get<PageResponse<CommentDto>>('/admin/comments', { params }),
+
+  deleteCommentByAdmin: (commentId: string) =>
+    axiosInstance.delete(`/admin/comments/${commentId}`),
+
+  reportComment: (postId: string, commentId: string, request: { reason: string; detail?: string }) =>
+    axiosInstance.post<string>(`/posts/${postId}/comments/${commentId}/report`, request),
+
+  getReportedComments: (params?: { pageNo?: number; pageSize?: number; keyword?: string }) =>
+    axiosInstance.get<PageResponse<CommentDto>>('/admin/comments/reported', { params }),
+
+  dismissCommentReport: (commentId: string) =>
+    axiosInstance.put<string>(`/admin/comments/${commentId}/dismiss`),
+
+  updatePostStatus: (postId: string, status: 'DRAFT' | 'PENDING' | 'PUBLISHED') =>
+    axiosInstance.put<PostResponse>(`/admin/posts/${postId}/status`, null, { params: { status } }),
 };
 
 

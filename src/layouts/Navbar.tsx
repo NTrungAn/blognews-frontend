@@ -58,7 +58,7 @@ function Navbar() {
 
   return (
     <>
-      <header className="border-b border-[#0058be]/20 bg-white">
+      <header className="relative z-40 border-b border-[#0058be]/20 bg-white">
       {/* ── Thanh tiện ích (cuộn theo trang) ── */}
       <div className="border-b border-[#0058be]/15 bg-[#0058be] text-[10px] text-[#d8e2ff]">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-1 sm:px-6">
@@ -116,7 +116,7 @@ function Navbar() {
                   >
                     {user.username.charAt(0)}
                   </button>
-                  <div className="absolute right-0 top-[calc(100%+4px)] hidden w-52 rounded-lg border border-[#0058be]/15 bg-white py-1 shadow-lg shadow-[#0058be]/10 group-focus-within:block group-hover:block">
+                  <div className="absolute right-0 top-[calc(100%+4px)] z-50 hidden w-52 rounded-lg border border-[#0058be]/15 bg-white py-1 shadow-lg shadow-[#0058be]/10 group-focus-within:block group-hover:block">
                     <div className="border-b border-[#0058be]/10 px-3 py-2">
                       <p className="font-serif text-sm font-bold text-[#191c1d]">{user.username}</p>
                       <p className="mt-0.5 truncate text-[11px] text-[#727785]">{user.email}</p>
