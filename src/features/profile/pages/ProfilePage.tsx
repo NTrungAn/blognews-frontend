@@ -25,7 +25,7 @@ function ProfilePage() {
 
   // Fetch User Profile Stats
   const { data: userProfile, isLoading: isProfileLoading } = useQuery({
-    queryKey: ['profile-stats'],
+    queryKey: ['profile-stats', user?.username],
     queryFn: () => blogApi.getMyProfileStats().then((r) => r.data),
     enabled: !!user,
   });
@@ -35,14 +35,14 @@ function ProfilePage() {
 
   // Fetch My Posts
   const { data: myPostsData, isLoading: isPostsLoading } = useQuery({
-    queryKey: ['my-posts', pageNo],
+    queryKey: ['my-posts', user?.username, pageNo],
     queryFn: () => blogApi.getMyPosts({ pageNo, pageSize }).then((r) => r.data),
     enabled: activeTab === 'articles',
   });
 
   // Fetch Followers
   const { data: followersData, isLoading: isFollowersLoading, isError: isFollowersError } = useQuery({
-    queryKey: ['my-followers'],
+    queryKey: ['my-followers', user?.username],
     queryFn: () => blogApi.getMyFollowers(),
     enabled: activeTab === 'followers',
     staleTime: 30_000,
@@ -50,7 +50,7 @@ function ProfilePage() {
 
   // Fetch Following
   const { data: followingData, isLoading: isFollowingLoading, isError: isFollowingError } = useQuery({
-    queryKey: ['my-following'],
+    queryKey: ['my-following', user?.username],
     queryFn: () => blogApi.getMyFollowing(),
     enabled: activeTab === 'following',
     staleTime: 30_000,

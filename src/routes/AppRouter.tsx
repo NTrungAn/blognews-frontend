@@ -25,7 +25,9 @@ const AdminCategoriesPage = lazy(() => import('../features/admin/pages/AdminCate
 const AdminTagsPage       = lazy(() => import('../features/admin/pages/AdminTagsPage'));
 const AdminAnalyticsPage  = lazy(() => import('../features/admin/pages/AdminAnalyticsPage'));
 const AdminSettingsPage   = lazy(() => import('../features/admin/pages/AdminSettingsPage'));
+const AdminCommentsPage   = lazy(() => import('../features/admin/pages/AdminCommentsPage'));
 const ProfilePage         = lazy(() => import('../features/profile/pages/ProfilePage'));
+const NotificationPage    = lazy(() => import('../features/notifications/pages/NotificationPage'));
 
 // Author pages
 const PostEditorPage = lazy(() => import('../features/blog/pages/PostEditorPage'));
@@ -87,6 +89,7 @@ const router = createBrowserRouter([
               { path: '/my-posts', element: <MyPostsPage /> },
               { path: '/my-bookmarks', element: <MyBookmarksPage /> },
               { path: '/profile',  element: <ProfilePage /> },
+              { path: '/notifications', element: <NotificationPage /> },
             ],
           },
           // Author routes
@@ -111,6 +114,7 @@ const router = createBrowserRouter([
               { path: '/admin/users',       element: <AdminUsersPage /> },
               { path: '/admin/categories',  element: <AdminCategoriesPage /> },
               { path: '/admin/tags',        element: <AdminTagsPage /> },
+              { path: '/admin/comments',    element: <AdminCommentsPage /> },
               { path: '/admin/analytics',   element: <AdminAnalyticsPage /> },
               { path: '/admin/settings',    element: <AdminSettingsPage /> },
             ],

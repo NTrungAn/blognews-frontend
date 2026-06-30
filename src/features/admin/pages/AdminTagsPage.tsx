@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import blogApi, { type Tag, type TagRequest } from '../../../api/blogApi';
+import { useToast, useConfirm, ToastContainer } from '../../../components/Toast';
 
 function AdminTagsPage() {
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTag, setEditingTag] = useState<Tag | null>(null);
+  const { toasts, toast, removeToast } = useToast();
+  const { confirm, ConfirmDialogComponent } = useConfirm();
   
   const [form, setForm] = useState<TagRequest>({ name: '', slug: '' });
   const [formError, setFormError] = useState('');
@@ -24,8 +27,12 @@ function AdminTagsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tags'] });
       handleCloseModal();
+      toast.success('Tạo tag thành công!', 'Tag mới đã được thêm vào hệ thống.');
     },
-    onError: () => setFormError('Tạo tag thất bại. Vui lòng thử lại.'),
+    onError: () => {
+      setFormError('Tạo tag thất bại. Vui lòng thử lại.');
+      toast.error('Tạo tag thất bại', 'Tên tag có thể đã tồn tại.');
+    },
   });
 
   const updateMutation = useMutation({
@@ -33,14 +40,21 @@ function AdminTagsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tags'] });
       handleCloseModal();
+      toast.success('Cập nhật tag thành công!', 'Tag đã được cập nhật.');
     },
-    onError: () => setFormError('Cập nhật tag thất bại. Vui lòng thử lại.'),
+    onError: () => {
+      setFormError('Cập nhật tag thất bại. Vui lòng thử lại.');
+      toast.error('Cập nhật thất bại', 'Vui lòng kiểm tra lại.');
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => blogApi.deleteTag(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tags'] }),
-    onError: () => alert('Không thể xóa tag này.'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tags'] });
+      toast.success('Xóa tag thành công!', 'Tag đã bị xóa khỏi hệ thống.');
+    },
+    onError: () => toast.error('Không thể xóa tag', 'Vui lòng thử lại sau.'),
   });
 
   // Handlers
@@ -80,13 +94,20 @@ function AdminTagsPage() {
     }
   };
 
-  const handleDelete = (id: string) => {
-    if (window.confirm('Bạn có chắc chắn muốn xóa tag này không?')) {
-      deleteMutation.mutate(id);
-    }
+  const handleDelete = async (id: string) => {
+    const ok = await confirm({
+      title: 'Xóa tag',
+      message: 'Bạn có chắc chắn muốn xóa tag này? Hành động này không thể khôi phục.',
+      confirmText: 'Xóa tag',
+      variant: 'danger',
+    });
+    if (ok) deleteMutation.mutate(id);
   };
 
   return (
+    <>
+      {ConfirmDialogComponent}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     <div className="p-8">
         <div className="mb-8 flex items-center justify-between">
           <div>
@@ -223,6 +244,7 @@ function AdminTagsPage() {
         </div>
       )}
     </div>
+    </>
   );
 }
 

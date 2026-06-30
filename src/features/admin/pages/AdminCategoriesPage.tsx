@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import blogApi, { type Category, type CategoryRequest } from '../../../api/blogApi';
+import { useToast, useConfirm, ToastContainer } from '../../../components/Toast';
 
 function AdminCategoriesPage() {
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const { toasts, toast, removeToast } = useToast();
+  const { confirm, ConfirmDialogComponent } = useConfirm();
   
   const [form, setForm] = useState<CategoryRequest>({ name: '', slug: '' });
   const [formError, setFormError] = useState('');
@@ -22,8 +25,12 @@ function AdminCategoriesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       handleCloseModal();
+      toast.success('Tạo danh mục thành công!', 'Danh mục mới đã được thêm vào hệ thống.');
     },
-    onError: () => setFormError('Tạo danh mục thất bại. Vui lòng thử lại.'),
+    onError: () => {
+      setFormError('Tạo danh mục thất bại. Vui lòng thử lại.');
+      toast.error('Tạo danh mục thất bại', 'Tên danh mục có thể đã tồn tại.');
+    },
   });
 
   const updateMutation = useMutation({
@@ -31,14 +38,21 @@ function AdminCategoriesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       handleCloseModal();
+      toast.success('Cập nhật thành công!', 'Danh mục đã được cập nhật.');
     },
-    onError: () => setFormError('Cập nhật danh mục thất bại. Vui lòng thử lại.'),
+    onError: () => {
+      setFormError('Cập nhật danh mục thất bại. Vui lòng thử lại.');
+      toast.error('Cập nhật thất bại', 'Vui lòng kiểm tra lại thông tin.');
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => blogApi.deleteCategory(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['categories'] }),
-    onError: () => alert('Không thể xóa danh mục này. Có thể danh mục đang chứa bài viết.'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      toast.success('Xóa danh mục thành công!', 'Danh mục đã bị xóa khỏi hệ thống.');
+    },
+    onError: () => toast.error('Không thể xóa danh mục', 'Danh mục có thể đang chứa bài viết.'),
   });
 
   // Handlers
@@ -78,13 +92,20 @@ function AdminCategoriesPage() {
     }
   };
 
-  const handleDelete = (id: string) => {
-    if (window.confirm('Bạn có chắc chắn muốn xóa danh mục này không?')) {
-      deleteMutation.mutate(id);
-    }
+  const handleDelete = async (id: string) => {
+    const ok = await confirm({
+      title: 'Xóa danh mục',
+      message: 'Bạn có chắc chắn muốn xóa danh mục này? Hành động này không thể khôi phục.',
+      confirmText: 'Xóa danh mục',
+      variant: 'danger',
+    });
+    if (ok) deleteMutation.mutate(id);
   };
 
   return (
+    <>
+      {ConfirmDialogComponent}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     <div className="p-8">
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -231,6 +252,7 @@ function AdminCategoriesPage() {
         </div>
       )}
     </div>
+    </>
   );
 }
 

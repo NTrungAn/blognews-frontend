@@ -49,6 +49,13 @@ function HomePage() {
   });
   const tags = tagsData?.content ?? [];
 
+  // Fetch popular authors
+  const { data: popularAuthors = [] } = useQuery({
+    queryKey: ['popular-authors'],
+    queryFn: () => blogApi.getPopularAuthors(),
+    staleTime: 10 * 60 * 1000,
+  });
+
   // Tag Cloud Calculations
   const maxPostCount = Math.max(...tags.map(t => t.postCount || 0), 1);
   const minPostCount = Math.min(...tags.map(t => t.postCount || 0));
@@ -104,6 +111,29 @@ function HomePage() {
 
   return (
     <div className="min-h-screen bg-[#f8f9fa]">
+      {/* ── Trending Tags Carousel ──────────────────────────────── */}
+      {!activeCategorySlug && currentPage === 0 && tags.length > 0 && (
+        <section className="bg-white border-b border-[#E5E7EB] py-3.5">
+          <div className="mx-auto max-w-7xl px-6 flex items-center gap-3 overflow-hidden">
+            <span className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#424754] shrink-0">
+              <span className="material-symbols-outlined text-[16px] text-[#0058be]">trending_up</span>
+              Xu hướng:
+            </span>
+            <div className="flex flex-1 items-center gap-2 overflow-x-auto py-1 scroll-smooth" style={{ scrollbarWidth: 'none' }}>
+              {tags.slice(0, 10).map((tag) => (
+                <Link
+                  key={tag.id}
+                  to={`/?tag=${tag.slug}`}
+                  className="shrink-0 rounded-full bg-[#f3f4f5] px-3.5 py-1.5 text-xs font-medium text-[#424754] border border-[#E5E7EB] hover:bg-[#d8e2ff] hover:text-[#0058be] hover:border-[#0058be]/30 transition-all shadow-sm"
+                >
+                  #{tag.name}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* ── Hero Section ──────────────────────────────────────────── */}
       {!activeCategorySlug && currentPage === 0 && featuredPost && (
         <HeroSection
@@ -121,6 +151,59 @@ function HomePage() {
               categorySlug="co-the-ban-quan-tam"
               articles={categoryBlockArticles}
             />
+          </div>
+        </section>
+      )}
+
+      {/* ── Top Creators Section ────────────────────────────────── */}
+      {!activeCategorySlug && currentPage === 0 && popularAuthors.length > 0 && (
+        <section className="bg-[#f0f4f9] border-b border-[#E5E7EB] py-10">
+          <div className="mx-auto max-w-7xl px-6">
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-[#191c1d] flex items-center gap-2">
+                <span className="material-symbols-outlined text-[#0058be]">groups</span>
+                Tác giả tiêu biểu
+              </h2>
+              <span className="text-xs text-[#727785] uppercase tracking-wider font-semibold">Cộng đồng NewsFlow</span>
+            </div>
+            
+            <div className="grid gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+              {popularAuthors.map((author) => (
+                <div key={author.id} className="group relative flex flex-col items-center rounded-2xl border border-[#E5E7EB] bg-white p-5 text-center shadow-sm hover:shadow-md transition-all">
+                  {/* Avatar */}
+                  <Link to={`/author/${author.username}`} className="relative h-16 w-16 overflow-hidden rounded-full ring-2 ring-transparent group-hover:ring-[#0058be] transition-all">
+                    {author.avatar ? (
+                      <img src={getImageUrl(author.avatar)} alt={author.fullName} className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-[#d8e2ff] font-serif text-xl font-bold uppercase text-[#0058be]">
+                        {author.fullName.charAt(0)}
+                      </div>
+                    )}
+                  </Link>
+
+                  <Link to={`/author/${author.username}`} className="mt-3 block font-bold text-[#191c1d] hover:text-[#0058be] transition-colors line-clamp-1">
+                    {author.fullName}
+                  </Link>
+                  <span className="text-xs text-[#727785]">@{author.username}</span>
+
+                  <p className="mt-2 line-clamp-2 min-h-[32px] text-xs text-[#424754] leading-relaxed">
+                    {author.biography || 'Đóng góp nội dung cho NewsFlow.'}
+                  </p>
+
+                  <div className="mt-4 flex items-center justify-around w-full border-t border-gray-100 pt-3 text-[11px] text-[#727785]">
+                    <div className="text-center">
+                      <span className="block font-bold text-[#191c1d]">{author.totalPosts}</span>
+                      Bài viết
+                    </div>
+                    <div className="h-4 w-px bg-gray-100" />
+                    <div className="text-center">
+                      <span className="block font-bold text-[#191c1d]">{author.followersCount}</span>
+                      Followers
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
       )}
@@ -261,6 +344,32 @@ function HomePage() {
                 </div>
               </div>
             )}
+
+            {/* Newsletter Subscription Widget */}
+            <div className="relative overflow-hidden rounded-xl border border-[#d8e2ff] bg-white/70 p-5 shadow-sm backdrop-blur-md">
+              <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-blue-50/50 -z-10" />
+              <div className="mb-2 flex items-center gap-2 text-[#0058be]">
+                <span className="material-symbols-outlined text-xl">mail</span>
+                <h3 className="font-bold text-[#191c1d]">Nhận bản tin mới nhất</h3>
+              </div>
+              <p className="text-xs text-[#727785] leading-relaxed">
+                Đăng ký email để nhận những phân tích, tin tức nóng hổi trực tiếp vào hộp thư của bạn mỗi tuần.
+              </p>
+              <form onSubmit={(e) => { e.preventDefault(); alert('Cảm ơn bạn đã đăng ký nhận bản tin!'); }} className="mt-4 space-y-2">
+                <input
+                  type="email"
+                  required
+                  placeholder="Địa chỉ email của bạn"
+                  className="w-full rounded-lg border border-[#c2c6d6] px-3.5 py-2 text-xs text-[#191c1d] placeholder:text-[#727785] focus:border-[#0058be] focus:outline-none focus:ring-2 focus:ring-[#0058be]/10"
+                />
+                <button
+                  type="submit"
+                  className="w-full rounded-lg bg-[#0058be] py-2 text-xs font-bold text-white transition-all hover:brightness-110 shadow-sm"
+                >
+                  Đăng ký ngay
+                </button>
+              </form>
+            </div>
 
             {/* Write CTA */}
             <div className="overflow-hidden rounded-xl border border-[#d8e2ff] bg-gradient-to-br from-[#0058be] to-[#2170e4] p-5 text-white">

@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { tokenService } from '../api/axiosConfig';
 import authApi, { type LoginRequest } from '../api/authApi';
+import { useQueryClient } from '@tanstack/react-query';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -48,6 +49,7 @@ interface AuthProviderProps {
  * Khởi tạo từ localStorage để duy trì session sau khi refresh trang.
  */
 export function AuthProvider({ children }: AuthProviderProps) {
+  const queryClient = useQueryClient();
   const [state, setState] = useState<AuthState>({
     user: null,
     isAuthenticated: false,
@@ -104,8 +106,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } finally {
       tokenService.clearTokens();
       setUser(null);
+      queryClient.clear();
     }
-  }, [setUser]);
+  }, [setUser, queryClient]);
 
   return (
     <AuthContext.Provider
