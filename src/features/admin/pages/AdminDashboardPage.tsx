@@ -132,7 +132,7 @@ function AdminDashboardPage() {
         ? `Xác nhận phê duyệt bài viết "${title}" xuất bản công khai lên trang chủ?`
         : `Xác nhận gỡ bài viết "${title}" khỏi trang chủ và chuyển về dạng bản nháp?`,
       confirmText: isApprove ? 'Phê duyệt đăng' : 'Thu hồi về nháp',
-      variant: isApprove ? 'success' : 'warning',
+      variant: isApprove ? undefined : 'warning',
     });
     if (ok) updateStatusMutation.mutate({ id, status });
   };
