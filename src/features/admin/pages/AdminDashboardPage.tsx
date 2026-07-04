@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import blogApi, { type PostResponse } from '../../../api/blogApi';
+import blogApi from '../../../api/blogApi';
 import Pagination from '../../../components/Pagination';
 import { useToast, useConfirm, ToastContainer } from '../../../components/Toast';
 
@@ -141,12 +141,6 @@ function AdminDashboardPage() {
   const categories = categoriesData ?? [];
 
   const hasFilter = debouncedKeyword || statusFilter || categoryFilter;
-
-  // Render ảnh bìa helper
-  const getImageUrl = (path: string) => {
-    if (path.startsWith('http')) return path;
-    return `${import.meta.env.VITE_API_URL || 'http://localhost:8080/api'}/uploads/images/${path}`;
-  };
 
   return (
     <>

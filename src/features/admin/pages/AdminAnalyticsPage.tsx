@@ -199,7 +199,7 @@ function AdminAnalyticsPage() {
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={(value: number) => [`${value} bài`, 'Số bài viết']}
+                    formatter={(value: any) => [`${value} bài`, 'Số bài viết']}
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 16px rgba(0,0,0,0.1)' }}
                   />
                 </PieChart>

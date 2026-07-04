@@ -430,14 +430,14 @@ const blogApi = {
     axiosInstance.put<string>(`/admin/comments/${commentId}/dismiss`),
 
   updatePostStatus: (postId: string, status: 'DRAFT' | 'PENDING' | 'PUBLISHED') =>
-    axiosInstance.put<PostResponse>(`/admin/posts/${postId}/status`, null, { params: { status } }),
+    axiosInstance.put<ArticleDto>(`/admin/posts/${postId}/status`, null, { params: { status } }),
 
   // ─── Cài đặt hệ thống (Admin) ───
   getSystemSettings: () =>
     axiosInstance.get<Record<string, string>>('/admin/settings'),
 
   updateSystemSettings: (settings: Record<string, string>) =>
-    axiosInstance.put<Record<String, string>>('/admin/settings', settings),
+    axiosInstance.put<Record<string, string>>('/admin/settings', settings),
 };
 
 

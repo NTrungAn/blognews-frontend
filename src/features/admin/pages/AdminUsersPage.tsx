@@ -302,7 +302,7 @@ function AdminUsersPage() {
                     { value: 'USER',   label: 'USER (Tác giả)', desc: 'Có quyền viết bài, sửa/xóa bài của chính mình.', color: 'text-[#0058be]' },
                     { value: 'EDITOR', label: 'EDITOR', desc: 'Biên tập viên — duyệt, sửa hoặc xóa bất kỳ bài viết nào.', color: 'text-amber-600' },
                     { value: 'ADMIN',  label: 'ADMIN', desc: 'Kiểm soát toàn hệ thống — người dùng, danh mục, tags và bài viết.', color: 'text-[#ba1a1a]' },
-                  ].map(({ value, label, desc, color }) => (
+                  ].map(({ value, label, desc }) => (
                     <label
                       key={value}
                       className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-all ${
