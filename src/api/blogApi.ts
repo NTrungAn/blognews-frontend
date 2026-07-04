@@ -247,6 +247,10 @@ const blogApi = {
   deleteComment: (postId: string, commentId: string) =>
     axiosInstance.delete(`/posts/${postId}/comments/${commentId}`),
 
+  /** Cập nhật bình luận */
+  updateComment: (postId: string, commentId: string, data: CommentRequest) =>
+    axiosInstance.put<CommentDto>(`/posts/${postId}/comments/${commentId}`, data),
+
   /** Lấy danh sách thông báo */
   getNotifications: (params?: { pageNo?: number; pageSize?: number }) =>
     axiosInstance.get<PageResponse<NotificationDto>>('/notifications', { params }),
@@ -313,6 +317,10 @@ const blogApi = {
   deletePost: (id: string) =>
     axiosInstance.delete(`/posts/${id}`),
 
+  /** Gợi ý nội dung bài viết bằng AI */
+  suggestPostContent: (title: string, summary?: string) =>
+    axiosInstance.post<string>('/posts/suggest-content', { title, summary }),
+
   // ─── Quản lý User (Profile) ───
   getCurrentUser: () =>
     axiosInstance.get<UserResponse>('/users/me'),
@@ -368,6 +376,14 @@ const blogApi = {
     return response.data;
   },
 
+  /** Lấy danh sách người theo dõi của tác giả bất kỳ */
+  getAuthorFollowers: async (username: string, pageNo = 0, pageSize = 20): Promise<PageResponse<FollowerDto>> => {
+    const response = await axiosInstance.get<PageResponse<FollowerDto>>(`/users/${username}/followers`, {
+      params: { pageNo, pageSize },
+    });
+    return response.data;
+  },
+
   /** Upload ảnh (avatar, cover, etc) */
   uploadImage: (file: File) => {
     const formData = new FormData();
@@ -415,6 +431,13 @@ const blogApi = {
 
   updatePostStatus: (postId: string, status: 'DRAFT' | 'PENDING' | 'PUBLISHED') =>
     axiosInstance.put<PostResponse>(`/admin/posts/${postId}/status`, null, { params: { status } }),
+
+  // ─── Cài đặt hệ thống (Admin) ───
+  getSystemSettings: () =>
+    axiosInstance.get<Record<string, string>>('/admin/settings'),
+
+  updateSystemSettings: (settings: Record<string, string>) =>
+    axiosInstance.put<Record<String, string>>('/admin/settings', settings),
 };
 
 

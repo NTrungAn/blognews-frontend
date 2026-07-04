@@ -60,6 +60,29 @@ function CommentItem({
   const queryClient = useQueryClient();
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const hideTimeoutRef = useRef<number | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState(comment.content || '');
+
+  const updateCommentMutation = useMutation({
+    mutationFn: (newContent: string) => blogApi.updateComment(postId!, comment.id, { content: newContent }),
+    onSuccess: () => {
+      toast.success('Cập nhật bình luận thành công!');
+      setIsEditing(false);
+      queryClient.invalidateQueries({ queryKey: ['comments', postId] });
+    },
+    onError: (err: any) => {
+      toast.error('Cập nhật thất bại', err.response?.data?.message || 'Có lỗi xảy ra, vui lòng thử lại.');
+    }
+  });
+
+  const handleUpdateComment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editContent.trim()) {
+      toast.error('Nội dung bình luận không được để trống.');
+      return;
+    }
+    updateCommentMutation.mutate(editContent);
+  };
 
   const handleMouseEnter = () => {
     if (hideTimeoutRef.current) window.clearTimeout(hideTimeoutRef.current);
@@ -166,21 +189,55 @@ function CommentItem({
                 })}
               </span>
             </div>
-            {comment.content && (
-              <p className="whitespace-pre-wrap text-sm leading-relaxed text-[#424754]">
-                {comment.content}
-              </p>
-            )}
-
-            {comment.imageUrl && (
-              <div className="mt-2 overflow-hidden rounded-lg border border-[#E5E7EB] max-w-xs bg-gray-50">
-                <img
-                  src={getImageUrl(comment.imageUrl)}
-                  alt="Ảnh đính kèm"
-                  className="max-h-60 w-auto object-contain cursor-zoom-in rounded"
-                  onClick={() => window.open(getImageUrl(comment.imageUrl), '_blank')}
+            {isEditing ? (
+              <form onSubmit={handleUpdateComment} className="mt-2 space-y-2">
+                <textarea
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  className="w-full rounded-xl border border-[#c2c6d6] px-4 py-2 text-sm text-[#191c1d] outline-none focus:border-[#0058be] focus:ring-2 focus:ring-[#0058be]/10 transition-all resize-none"
+                  rows={2}
+                  disabled={updateCommentMutation.isPending}
                 />
-              </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsEditing(false);
+                      setEditContent(comment.content || '');
+                    }}
+                    className="rounded-lg border border-[#c2c6d6] px-3 py-1.5 text-xs font-medium text-[#424754] hover:bg-[#f8f9fa] transition-colors"
+                    disabled={updateCommentMutation.isPending}
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    className="rounded-lg bg-[#0058be] px-3 py-1.5 text-xs font-medium text-white hover:brightness-110 transition-all"
+                    disabled={updateCommentMutation.isPending}
+                  >
+                    {updateCommentMutation.isPending ? 'Đang lưu...' : 'Lưu'}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <>
+                {comment.content && (
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-[#424754]">
+                    {comment.content}
+                  </p>
+                )}
+
+                {comment.imageUrl && (
+                  <div className="mt-2 overflow-hidden rounded-lg border border-[#E5E7EB] max-w-xs bg-gray-50">
+                    <img
+                      src={getImageUrl(comment.imageUrl)}
+                      alt="Ảnh đính kèm"
+                      className="max-h-60 w-auto object-contain cursor-zoom-in rounded"
+                      onClick={() => window.open(getImageUrl(comment.imageUrl), '_blank')}
+                    />
+                  </div>
+                )}
+              </>
             )}
 
             {totalReactions > 0 && (
@@ -249,9 +306,23 @@ function CommentItem({
                 onClick={handleDeleteComment}
                 disabled={deleteCommentMutation.isPending}
                 className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-[#727785] hover:bg-rose-50 hover:text-rose-600 rounded-md transition-colors disabled:opacity-50"
+                title="Thu hồi bình luận"
               >
                 <span className="material-symbols-outlined text-sm">delete</span>
 
+              </button>
+            )}
+
+            {isAuthenticated && postId && isAuthor && !isEditing && (
+              <button
+                onClick={() => {
+                  setIsEditing(true);
+                  setEditContent(comment.content || '');
+                }}
+                className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-[#727785] hover:bg-[#f0f5ff] hover:text-[#0058be] rounded-md transition-colors"
+                title="Sửa bình luận"
+              >
+                <span className="material-symbols-outlined text-sm">edit</span>
               </button>
             )}
 
@@ -435,12 +506,6 @@ function BlogDetailPage() {
   const [isMobileTocOpen, setIsMobileTocOpen] = useState(false);
   const [toc, setToc] = useState<ToCItem[]>([]);
   const [activeId, setActiveId] = useState<string>('');
-
-  // Highlight and Share state
-  const [sharePopupOpen, setSharePopupOpen] = useState(false);
-  const [sharePosition, setSharePosition] = useState({ top: 0, left: 0 });
-  const [selectedText, setSelectedText] = useState('');
-  const articleRef = useRef<HTMLDivElement>(null);
 
   // Like count hiển thị — state riêng để cập nhật UI ngay lập tức
   const [displayLikesCount, setDisplayLikesCount] = useState(0);
@@ -917,52 +982,6 @@ function BlogDetailPage() {
     ? Math.max(1, Math.ceil((post.contentMarkdown?.split(/\s+/).length ?? 0) / 200))
     : 0;
 
-  // ── Highlight & Share Handlers ─────────────────────────────────────────────
-  const handleSelection = useCallback(() => {
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
-      if (sharePopupOpen) setSharePopupOpen(false);
-      return;
-    }
-
-    const text = selection.toString().trim();
-    // Only show if text is selected inside the articleRef
-    if (text.length > 0 && articleRef.current?.contains(selection.anchorNode)) {
-      const range = selection.getRangeAt(0);
-      const rect = range.getBoundingClientRect();
-      setSharePosition({
-        top: rect.top + window.scrollY - 45,
-        left: rect.left + window.scrollX + rect.width / 2,
-      });
-      setSelectedText(text);
-      setSharePopupOpen(true);
-    } else {
-      if (sharePopupOpen) setSharePopupOpen(false);
-    }
-  }, [sharePopupOpen]);
-
-  useEffect(() => {
-    document.addEventListener('selectionchange', handleSelection);
-    return () => {
-      document.removeEventListener('selectionchange', handleSelection);
-    };
-  }, [handleSelection]);
-
-  const shareToTwitter = (text: string) => {
-    const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent('"' + text + '"')} - ${encodeURIComponent(window.location.href)}`;
-    window.open(url, '_blank');
-  };
-
-  const shareToFacebook = () => {
-    const url = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`;
-    window.open(url, '_blank');
-  };
-
-  const copyText = (text: string) => {
-    navigator.clipboard.writeText(`"${text}" - ${window.location.href}`);
-    alert('Đã sao chép đoạn văn bản!');
-  };
-
   // ── Loading ────────────────────────────────────────────────────
   if (postLoading) {
     return (
@@ -1331,7 +1350,6 @@ function BlogDetailPage() {
 
           {/* ── Content ─────────────────────────────────────────── */}
           <article
-            ref={articleRef}
             className="prose-blog mt-8"
             dangerouslySetInnerHTML={{
               __html: renderMarkdown(post.contentMarkdown),
@@ -1679,43 +1697,6 @@ function BlogDetailPage() {
           animation: highlight-flash 3.5s ease-out forwards;
         }
       `}</style>
-      {/* ── Highlight & Share Popup ───────────────────────────────────────── */}
-      {sharePopupOpen && (
-        <div
-          className="absolute z-50 flex items-center gap-2 rounded-lg bg-[#191c1d] px-3 py-2 text-white shadow-xl animate-fade-in-up transition-opacity duration-200"
-          style={{
-            top: sharePosition.top,
-            left: sharePosition.left,
-            transform: 'translate(-50%, -100%)'
-          }}
-        >
-          <button
-            onClick={() => shareToTwitter(selectedText)}
-            className="flex items-center gap-1 hover:text-[#1da1f2] transition-colors group"
-            title="Share to Twitter"
-          >
-            <span className="text-xs font-semibold group-hover:underline">Twitter</span>
-          </button>
-          <div className="h-3 w-px bg-gray-600"></div>
-          <button
-            onClick={() => shareToFacebook()}
-            className="flex items-center gap-1 hover:text-[#1877f2] transition-colors group"
-            title="Share to Facebook"
-          >
-            <span className="text-xs font-semibold group-hover:underline">Facebook</span>
-          </button>
-          <div className="h-3 w-px bg-gray-600"></div>
-          <button
-            onClick={() => copyText(selectedText)}
-            className="flex items-center gap-1 hover:text-[#e5e7eb] transition-colors group"
-            title="Copy Text"
-          >
-            <span className="text-xs font-semibold group-hover:underline">Copy</span>
-          </button>
-          {/* Arrow pointing down */}
-          <div className="absolute left-1/2 bottom-[-4px] h-2 w-2 -translate-x-1/2 rotate-45 bg-[#191c1d]"></div>
-        </div>
-      )}
     </div>
   );
 }

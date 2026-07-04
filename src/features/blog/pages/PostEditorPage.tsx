@@ -23,6 +23,62 @@ function PostEditorPage() {
   const [coverImagePreview, setCoverImagePreview] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  const [isAiPanelOpen, setIsAiPanelOpen] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState('');
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
+
+  const suggestMutation = useMutation({
+    mutationFn: () => blogApi.suggestPostContent(form.title, form.summary),
+    onMutate: () => {
+      setIsGeneratingAi(true);
+      setIsAiPanelOpen(true);
+      setAiSuggestion('');
+    },
+    onSuccess: (res) => {
+      setIsGeneratingAi(false);
+      setAiSuggestion(res.data as unknown as string);
+    },
+    onError: (err: any) => {
+      setIsGeneratingAi(false);
+      setAiSuggestion(`Gợi ý thất bại: ${err.response?.data?.message || 'Không thể kết nối tới server.'}`);
+    }
+  });
+
+  const handleGetAiSuggestion = () => {
+    if (!form.title.trim()) {
+      alert('Vui lòng nhập tiêu đề bài viết để AI có thể gợi ý nội dung.');
+      return;
+    }
+    suggestMutation.mutate();
+  };
+
+  const handleTogglePanel = () => {
+    setIsAiPanelOpen((prev) => !prev);
+  };
+
+  const handleCopyOutline = async () => {
+    if (!aiSuggestion) return;
+    try {
+      await navigator.clipboard.writeText(aiSuggestion);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch {
+      // fallback for older browsers
+    }
+  };
+
+  const handleApplyOutline = () => {
+    if (!aiSuggestion) return;
+    if (!form.contentMarkdown.trim() || window.confirm('Nội dung hiện tại sẽ được thay thế bằng dàn ý gợi ý. Bạn có đồng ý không?')) {
+      setForm((prev) => ({
+        ...prev,
+        contentMarkdown: aiSuggestion
+      }));
+      setIsAiPanelOpen(false);
+    }
+  };
+
   // Fetch categories & tags
   const { data: categories = [] } = useQuery({
     queryKey: ['categories'],
@@ -170,16 +226,27 @@ function PostEditorPage() {
         <div className="space-y-6">
           {/* Title */}
           <div>
-            <input
-              type="text"
-              placeholder="Nhập tiêu đề bài viết..."
-              value={form.title}
-              onChange={(e) => {
-                setForm({ ...form, title: e.target.value });
-                if (errors.title) setErrors({ ...errors, title: '' });
-              }}
-              className="w-full bg-transparent text-3xl font-bold tracking-tight text-[#191c1d] placeholder:text-[#c2c6d6] focus:outline-none"
-            />
+            <div className="flex gap-3 items-center">
+              <input
+                type="text"
+                placeholder="Nhập tiêu đề bài viết..."
+                value={form.title}
+                onChange={(e) => {
+                  setForm({ ...form, title: e.target.value });
+                  if (errors.title) setErrors({ ...errors, title: '' });
+                }}
+                className="flex-1 bg-transparent text-3xl font-bold tracking-tight text-[#191c1d] placeholder:text-[#c2c6d6] focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleGetAiSuggestion}
+                className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-md hover:brightness-110 transition-all focus:outline-none shrink-0 cursor-pointer"
+                title="Gợi ý dàn ý bài viết bằng AI"
+              >
+                <span className="material-symbols-outlined text-[16px] animate-pulse">neurology</span>
+                Gợi ý dàn ý (AI)
+              </button>
+            </div>
             {errors.title && <p className="mt-1 text-sm text-[#ba1a1a]">{errors.title}</p>}
           </div>
 
@@ -277,11 +344,10 @@ function PostEditorPage() {
                 setForm({ ...form, categoryId: e.target.value });
                 if (errors.categoryId) setErrors({ ...errors, categoryId: '' });
               }}
-              className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
-                errors.categoryId
-                  ? 'border-[#ba1a1a] focus:border-[#ba1a1a] focus:ring-[#ba1a1a]/10'
-                  : 'border-[#c2c6d6] focus:border-[#0058be] focus:ring-[#0058be]/10'
-              }`}
+              className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 ${errors.categoryId
+                ? 'border-[#ba1a1a] focus:border-[#ba1a1a] focus:ring-[#ba1a1a]/10'
+                : 'border-[#c2c6d6] focus:border-[#0058be] focus:ring-[#0058be]/10'
+                }`}
             >
               <option value="">-- Chọn danh mục --</option>
               {categories.map((cat) => (
@@ -301,11 +367,10 @@ function PostEditorPage() {
                   <button
                     key={tag.id}
                     onClick={() => toggleTag(tag.id)}
-                    className={`rounded-md border px-2 py-1 text-xs font-medium transition-colors ${
-                      isSelected
-                        ? 'border-[#0058be] bg-[#0058be] text-white'
-                        : 'border-[#c2c6d6] bg-[#f8f9fa] text-[#424754] hover:bg-[#edeeef]'
-                    }`}
+                    className={`rounded-md border px-2 py-1 text-xs font-medium transition-colors ${isSelected
+                      ? 'border-[#0058be] bg-[#0058be] text-white'
+                      : 'border-[#c2c6d6] bg-[#f8f9fa] text-[#424754] hover:bg-[#edeeef]'
+                      }`}
                   >
                     {tag.name}
                   </button>
@@ -313,6 +378,116 @@ function PostEditorPage() {
               })}
             </div>
           </div>
+        </div>
+      </div>
+      {/* ── Floating Pull-tab: hiện khi panel đóng và đã có nội dung ── */}
+      {!isAiPanelOpen && (aiSuggestion || isGeneratingAi) && (
+        <button
+          type="button"
+          onClick={handleTogglePanel}
+          className="fixed right-0 top-1/2 -translate-y-1/2 z-50 flex flex-col items-center gap-1 rounded-l-2xl bg-gradient-to-b from-blue-600 to-indigo-700 px-2 py-4 text-white shadow-xl hover:from-blue-500 hover:to-indigo-600 transition-all cursor-pointer"
+          title="Mở lại gợi ý AI"
+        >
+          <span className="material-symbols-outlined text-[18px]">neurology</span>
+          <span style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }} className="text-[10px] font-bold tracking-widest uppercase mt-1">AI Gợi ý</span>
+          <span className="material-symbols-outlined text-[14px] mt-1">chevron_left</span>
+        </button>
+      )}
+
+      {/* ── AI Side-panel: luôn tồn tại trong DOM, ẩn/hiện bằng CSS translate ── */}
+      <div
+        className={`fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col bg-white shadow-2xl border-l border-gray-100 transition-transform duration-300 ease-in-out ${
+          isAiPanelOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-gray-100 p-4 shrink-0 bg-gradient-to-r from-blue-600 to-indigo-700">
+          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <span className="material-symbols-outlined text-[18px]">neurology</span>
+            Trợ lý Gợi ý Nội dung (AI)
+          </h3>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={handleGetAiSuggestion}
+              disabled={isGeneratingAi || !form.title.trim()}
+              className="flex items-center gap-1 rounded-lg bg-white/20 px-2.5 py-1 text-xs font-semibold text-white hover:bg-white/30 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Tạo lại gợi ý mới"
+            >
+              <span className="material-symbols-outlined text-[14px]">refresh</span>
+              Tạo lại
+            </button>
+            <button
+              onClick={handleTogglePanel}
+              className="rounded-full p-1 text-white/70 hover:bg-white/20 hover:text-white transition-colors cursor-pointer ml-1"
+              title="Thu gọn panel (nội dung vẫn được giữ lại)"
+            >
+              <span className="material-symbols-outlined text-sm">chevron_right</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div className="rounded-xl bg-blue-50 border border-blue-100 p-3 text-xs text-blue-800 flex gap-2">
+            <span className="material-symbols-outlined text-[15px] mt-0.5 text-blue-500 shrink-0">info</span>
+            <p>Nhấn <strong>Thu gọn</strong> để ẩn panel — nội dung gợi ý vẫn được giữ nguyên. Nhấn tab <strong>AI Gợi ý</strong> ở cạnh phải để mở lại.</p>
+          </div>
+
+          <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Tiêu đề</div>
+          <div className="text-sm font-semibold text-gray-800 bg-gray-50 rounded-lg px-3 py-2 border border-gray-100">{form.title || <span className="text-gray-300 italic">Chưa có tiêu đề</span>}</div>
+
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Dàn ý gợi ý</div>
+            {aiSuggestion && !isGeneratingAi && (
+              <button
+                type="button"
+                onClick={handleCopyOutline}
+                className="flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-800 transition-colors cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[14px]">{isCopied ? 'check_circle' : 'content_copy'}</span>
+                {isCopied ? 'Đã sao chép!' : 'Sao chép'}
+              </button>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 flex-1 min-h-[320px] max-h-[calc(100vh-340px)] overflow-y-auto font-mono text-xs whitespace-pre-wrap leading-relaxed text-gray-700">
+            {isGeneratingAi ? (
+              <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-400 min-h-[280px]">
+                <div className="h-7 w-7 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+                <p className="animate-pulse text-sm">Đang phân tích và lập dàn ý...</p>
+                <p className="text-[10px] text-gray-300">Quá trình có thể mất 5–15 giây</p>
+              </div>
+            ) : aiSuggestion ? (
+              aiSuggestion
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-300 min-h-[280px]">
+                <span className="material-symbols-outlined text-4xl">auto_awesome</span>
+                <p className="text-xs">Nhấn "Tạo lại" để nhận gợi ý mới</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-gray-100 p-4 flex gap-2 shrink-0 bg-gray-50/50">
+          <button
+            type="button"
+            onClick={handleTogglePanel}
+            className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer"
+          >
+            Thu gọn
+          </button>
+          {!isGeneratingAi && aiSuggestion && (
+            <button
+              type="button"
+              onClick={handleApplyOutline}
+              className="flex-1 rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[15px]">edit_document</span>
+              Áp dụng vào bài viết
+            </button>
+          )}
         </div>
       </div>
     </div>

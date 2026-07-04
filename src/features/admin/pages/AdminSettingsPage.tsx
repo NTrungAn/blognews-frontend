@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import blogApi from '../../../api/blogApi';
 import { useToast, ToastContainer } from '../../../components/Toast';
 
 // ─── Tab definitions ──────────────────────────────────────────────────────────
@@ -77,9 +79,50 @@ function AdminSettingsPage() {
   const [activeTab, setActiveTab] = useState('general');
   const { toasts, toast, removeToast } = useToast();
 
-  const handleSave = (tabName: string) => {
-    toast.success(`Đã lưu ${tabName}!`, 'Cấu hình sẽ được áp dụng sau khi khởi động lại.');
+  const { data: serverSettings, isLoading } = useQuery({
+    queryKey: ['adminSettings'],
+    queryFn: () => blogApi.getSystemSettings().then((r) => r.data),
+  });
+
+  const [settings, setSettings] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (serverSettings) {
+      setSettings(serverSettings);
+    }
+  }, [serverSettings]);
+
+  const updateSettingsMutation = useMutation({
+    mutationFn: (newSettings: Record<string, string>) =>
+      blogApi.updateSystemSettings(newSettings).then((r) => r.data),
+    onSuccess: (data) => {
+      toast.success('Lưu cấu hình thành công!', 'Các cài đặt hệ thống đã được cập nhật.');
+      setSettings(data);
+    },
+    onError: (err: any) => {
+      toast.error('Lưu cấu hình thất bại', err.response?.data?.message || 'Có lỗi xảy ra.');
+    },
+  });
+
+  const handleChange = (key: string, value: string) => {
+    setSettings((prev) => ({ ...prev, [key]: value }));
   };
+
+  const handleSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateSettingsMutation.mutate(settings);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#f8f9fa]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-9 w-9 animate-spin rounded-full border-4 border-[#0058be] border-t-transparent" />
+          <p className="text-sm text-[#727785]">Đang tải cấu hình...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -115,9 +158,13 @@ function AdminSettingsPage() {
 
           {/* ── General ── */}
           {activeTab === 'general' && (
-            <form className="space-y-6" onSubmit={(e) => { e.preventDefault(); handleSave('cài đặt chung'); }}>
+            <form className="space-y-6" onSubmit={handleSave}>
               <SettingField label="Tên website" hint="Tên hiển thị trên thanh tiêu đề trình duyệt.">
-                <TextInput type="text" defaultValue="NewsFlow Blog CMS" />
+                <TextInput
+                  type="text"
+                  value={settings.website_name || ''}
+                  onChange={(e) => handleChange('website_name', e.target.value)}
+                />
               </SettingField>
 
               <SettingField label="Logo website" hint="Khuyên dùng kích thước 256×256 px, định dạng PNG/SVG.">
@@ -132,18 +179,28 @@ function AdminSettingsPage() {
               </SettingField>
 
               <SettingField label="Mô tả website" hint="Mô tả ngắn gọn về website, hiển thị ở footer và meta description mặc định.">
-                <TextareaInput rows={3} defaultValue="Một hệ thống quản trị nội dung mạnh mẽ." />
+                <TextareaInput
+                  rows={3}
+                  value={settings.website_description || ''}
+                  onChange={(e) => handleChange('website_description', e.target.value)}
+                />
               </SettingField>
 
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <SettingField label="Ngôn ngữ mặc định">
-                  <SelectInput defaultValue="vi">
+                  <SelectInput
+                    value={settings.default_language || 'vi'}
+                    onChange={(e) => handleChange('default_language', e.target.value)}
+                  >
                     <option value="vi">Tiếng Việt</option>
                     <option value="en">English</option>
                   </SelectInput>
                 </SettingField>
                 <SettingField label="Múi giờ">
-                  <SelectInput defaultValue="Asia/Ho_Chi_Minh">
+                  <SelectInput
+                    value={settings.timezone || 'Asia/Ho_Chi_Minh'}
+                    onChange={(e) => handleChange('timezone', e.target.value)}
+                  >
                     <option value="Asia/Ho_Chi_Minh">(UTC+07:00) Hồ Chí Minh</option>
                     <option value="UTC">UTC</option>
                     <option value="Asia/Bangkok">(UTC+07:00) Bangkok</option>
@@ -153,21 +210,43 @@ function AdminSettingsPage() {
 
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <SettingField label="Số bài viết mỗi trang" hint="Số bài hiển thị mặc định trên trang blog.">
-                  <TextInput type="number" defaultValue={10} min={1} max={50} />
+                  <TextInput
+                    type="number"
+                    value={settings.posts_per_page || '10'}
+                    min={1}
+                    max={50}
+                    onChange={(e) => handleChange('posts_per_page', e.target.value)}
+                  />
                 </SettingField>
                 <SettingField label="Chế độ bảo trì" hint="Tắt website tạm thời khi cần bảo trì.">
                   <div className="flex items-center gap-3 mt-1">
-                    <button type="button" className="relative inline-flex h-6 w-11 items-center rounded-full bg-[#c2c6d6] transition-colors focus:outline-none">
-                      <span className="inline-block h-4 w-4 translate-x-1 transform rounded-full bg-white shadow transition-transform" />
+                    <button
+                      type="button"
+                      onClick={() => handleChange('maintenance_mode', settings.maintenance_mode === 'true' ? 'false' : 'true')}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                        settings.maintenance_mode === 'true' ? 'bg-[#0058be]' : 'bg-[#c2c6d6]'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                          settings.maintenance_mode === 'true' ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
                     </button>
-                    <span className="text-sm text-[#727785]">Đang tắt</span>
+                    <span className="text-sm text-[#727785]">
+                      {settings.maintenance_mode === 'true' ? 'Đang bật' : 'Đang tắt'}
+                    </span>
                   </div>
                 </SettingField>
               </div>
 
               <div className="flex justify-end border-t border-[#E5E7EB] pt-6">
-                <button type="submit" className="rounded-xl bg-[#0058be] px-6 py-2.5 text-sm font-medium text-white hover:brightness-110 transition-all">
-                  Lưu cấu hình
+                <button
+                  type="submit"
+                  disabled={updateSettingsMutation.isPending}
+                  className="rounded-xl bg-[#0058be] px-6 py-2.5 text-sm font-medium text-white hover:brightness-110 transition-all disabled:opacity-50"
+                >
+                  {updateSettingsMutation.isPending ? 'Đang lưu...' : 'Lưu cấu hình'}
                 </button>
               </div>
             </form>
@@ -175,17 +254,27 @@ function AdminSettingsPage() {
 
           {/* ── SEO ── */}
           {activeTab === 'seo' && (
-            <form className="space-y-6" onSubmit={(e) => { e.preventDefault(); handleSave('cấu hình SEO'); }}>
+            <form className="space-y-6" onSubmit={handleSave}>
               <InfoBanner>
                 Các cấu hình SEO dưới đây áp dụng làm giá trị mặc định. Mỗi bài viết có thể ghi đè bằng meta riêng.
               </InfoBanner>
 
               <SettingField label="Meta Title mặc định" hint="Tiêu đề SEO mặc định khi bài viết không có title riêng (tối đa 60 ký tự).">
-                <TextInput type="text" defaultValue="NewsFlow — Tin tức & Blog chuyên sâu" maxLength={60} />
+                <TextInput
+                  type="text"
+                  value={settings.meta_title || ''}
+                  maxLength={60}
+                  onChange={(e) => handleChange('meta_title', e.target.value)}
+                />
               </SettingField>
 
               <SettingField label="Meta Description mặc định" hint="Mô tả SEO mặc định (tối đa 160 ký tự).">
-                <TextareaInput rows={3} defaultValue="Khám phá các bài viết chuyên sâu về công nghệ, kinh doanh, văn hóa và nhiều chủ đề thú vị khác." maxLength={160} />
+                <TextareaInput
+                  rows={3}
+                  value={settings.meta_description || ''}
+                  maxLength={160}
+                  onChange={(e) => handleChange('meta_description', e.target.value)}
+                />
               </SettingField>
 
               <SettingField label="OG Image (Open Graph)" hint="Ảnh mặc định khi chia sẻ lên mạng xã hội. Kích thước khuyến nghị: 1200×630 px.">
@@ -201,27 +290,51 @@ function AdminSettingsPage() {
 
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <SettingField label="Google Analytics ID" hint="VD: G-XXXXXXXXXX">
-                  <TextInput type="text" placeholder="G-XXXXXXXXXX" />
+                  <TextInput
+                    type="text"
+                    placeholder="G-XXXXXXXXXX"
+                    value={settings.google_analytics_id || ''}
+                    onChange={(e) => handleChange('google_analytics_id', e.target.value)}
+                  />
                 </SettingField>
                 <SettingField label="Google Search Console" hint="Meta tag xác minh từ GSC.">
-                  <TextInput type="text" placeholder="Dán meta content tại đây" />
+                  <TextInput
+                    type="text"
+                    placeholder="Dán meta content tại đây"
+                    value={settings.google_search_console || ''}
+                    onChange={(e) => handleChange('google_search_console', e.target.value)}
+                  />
                 </SettingField>
               </div>
 
               <SettingField label="Canonical URL" hint="URL gốc của website (không có trailing slash).">
-                <TextInput type="url" defaultValue="https://newsflow.com" />
+                <TextInput
+                  type="url"
+                  value={settings.canonical_url || ''}
+                  onChange={(e) => handleChange('canonical_url', e.target.value)}
+                />
               </SettingField>
 
               <div className="flex items-center gap-3 rounded-xl border border-[#E5E7EB] p-4">
-                <input type="checkbox" id="sitemap" defaultChecked className="h-4 w-4 rounded text-[#0058be]" />
-                <label htmlFor="sitemap" className="text-sm font-medium text-[#191c1d]">
+                <input
+                  type="checkbox"
+                  id="sitemap"
+                  checked={settings.sitemap_enabled === 'true'}
+                  onChange={(e) => handleChange('sitemap_enabled', e.target.checked ? 'true' : 'false')}
+                  className="h-4 w-4 rounded text-[#0058be]"
+                />
+                <label htmlFor="sitemap" className="text-sm font-medium text-[#191c1d] cursor-pointer">
                   Tự động tạo Sitemap XML tại <code className="text-xs bg-[#f3f4f5] px-1.5 py-0.5 rounded">/sitemap.xml</code>
                 </label>
               </div>
 
               <div className="flex justify-end border-t border-[#E5E7EB] pt-6">
-                <button type="submit" className="rounded-xl bg-[#0058be] px-6 py-2.5 text-sm font-medium text-white hover:brightness-110 transition-all">
-                  Lưu cấu hình SEO
+                <button
+                  type="submit"
+                  disabled={updateSettingsMutation.isPending}
+                  className="rounded-xl bg-[#0058be] px-6 py-2.5 text-sm font-medium text-white hover:brightness-110 transition-all disabled:opacity-50"
+                >
+                  {updateSettingsMutation.isPending ? 'Đang lưu...' : 'Lưu cấu hình SEO'}
                 </button>
               </div>
             </form>
@@ -229,47 +342,66 @@ function AdminSettingsPage() {
 
           {/* ── Email SMTP ── */}
           {activeTab === 'email' && (
-            <form className="space-y-6" onSubmit={(e) => { e.preventDefault(); handleSave('cài đặt email'); }}>
+            <form className="space-y-6" onSubmit={handleSave}>
               <InfoBanner>
                 Cấu hình SMTP để hệ thống gửi email thông báo (đăng ký, đặt lại mật khẩu, v.v.). Không điền = tắt email.
               </InfoBanner>
 
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <SettingField label="SMTP Host" hint="VD: smtp.gmail.com">
-                  <TextInput type="text" placeholder="smtp.gmail.com" />
+                  <TextInput
+                    type="text"
+                    placeholder="smtp.gmail.com"
+                    value={settings.smtp_host || ''}
+                    onChange={(e) => handleChange('smtp_host', e.target.value)}
+                  />
                 </SettingField>
                 <SettingField label="SMTP Port" hint="Thường là 587 (TLS) hoặc 465 (SSL).">
-                  <TextInput type="number" defaultValue={587} />
+                  <TextInput
+                    type="number"
+                    value={settings.smtp_port || ''}
+                    onChange={(e) => handleChange('smtp_port', e.target.value)}
+                  />
                 </SettingField>
               </div>
 
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <SettingField label="Username / Email gửi">
-                  <TextInput type="email" placeholder="noreply@newsflow.com" />
+                  <TextInput
+                    type="email"
+                    placeholder="noreply@newsflow.com"
+                    value={settings.smtp_username || ''}
+                    onChange={(e) => handleChange('smtp_username', e.target.value)}
+                  />
                 </SettingField>
                 <SettingField label="Password / App Password">
-                  <TextInput type="password" placeholder="••••••••••••" />
+                  <TextInput
+                    type="password"
+                    placeholder="••••••••••••"
+                    value={settings.smtp_password || ''}
+                    onChange={(e) => handleChange('smtp_password', e.target.value)}
+                  />
                 </SettingField>
               </div>
 
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <SettingField label="Tên hiển thị người gửi">
-                  <TextInput type="text" defaultValue="NewsFlow System" />
+                  <TextInput
+                    type="text"
+                    value={settings.smtp_from_name || ''}
+                    onChange={(e) => handleChange('smtp_from_name', e.target.value)}
+                  />
                 </SettingField>
                 <SettingField label="Mã hóa">
-                  <SelectInput defaultValue="TLS">
+                  <SelectInput
+                    value={settings.smtp_encryption || 'TLS'}
+                    onChange={(e) => handleChange('smtp_encryption', e.target.value)}
+                  >
                     <option value="TLS">TLS (khuyến nghị)</option>
                     <option value="SSL">SSL</option>
                     <option value="NONE">Không mã hóa</option>
                   </SelectInput>
                 </SettingField>
-              </div>
-
-              <div className="flex items-center gap-3 rounded-xl border border-[#E5E7EB] p-4">
-                <input type="checkbox" id="testEmail" className="h-4 w-4 rounded text-[#0058be]" />
-                <label htmlFor="testEmail" className="text-sm font-medium text-[#191c1d]">
-                  Gửi email kiểm thử sau khi lưu
-                </label>
               </div>
 
               <div className="flex justify-end border-t border-[#E5E7EB] pt-6 gap-3">
@@ -280,8 +412,12 @@ function AdminSettingsPage() {
                 >
                   Gửi email test
                 </button>
-                <button type="submit" className="rounded-xl bg-[#0058be] px-6 py-2.5 text-sm font-medium text-white hover:brightness-110 transition-all">
-                  Lưu cấu hình SMTP
+                <button
+                  type="submit"
+                  disabled={updateSettingsMutation.isPending}
+                  className="rounded-xl bg-[#0058be] px-6 py-2.5 text-sm font-medium text-white hover:brightness-110 transition-all disabled:opacity-50"
+                >
+                  {updateSettingsMutation.isPending ? 'Đang lưu...' : 'Lưu cấu hình SMTP'}
                 </button>
               </div>
             </form>
@@ -289,13 +425,16 @@ function AdminSettingsPage() {
 
           {/* ── Permissions ── */}
           {activeTab === 'permissions' && (
-            <form className="space-y-6" onSubmit={(e) => { e.preventDefault(); handleSave('phân quyền'); }}>
+            <form className="space-y-6" onSubmit={handleSave}>
               <InfoBanner>
                 Cấu hình quyền mặc định được áp dụng khi tài khoản mới đăng ký. Admin có thể thay đổi quyền từng người dùng tại trang Quản lý Người dùng.
               </InfoBanner>
 
               <SettingField label="Quyền mặc định khi đăng ký" hint="Quyền được gán tự động cho người dùng mới.">
-                <SelectInput defaultValue="READER">
+                <SelectInput
+                  value={settings.default_role || 'READER'}
+                  onChange={(e) => handleChange('default_role', e.target.value)}
+                >
                   <option value="READER">READER — Chỉ đọc và bình luận</option>
                   <option value="USER">USER — Có thể viết bài</option>
                 </SelectInput>
@@ -342,8 +481,12 @@ function AdminSettingsPage() {
               </div>
 
               <div className="flex justify-end border-t border-[#E5E7EB] pt-6">
-                <button type="submit" className="rounded-xl bg-[#0058be] px-6 py-2.5 text-sm font-medium text-white hover:brightness-110 transition-all">
-                  Lưu cài đặt phân quyền
+                <button
+                  type="submit"
+                  disabled={updateSettingsMutation.isPending}
+                  className="rounded-xl bg-[#0058be] px-6 py-2.5 text-sm font-medium text-white hover:brightness-110 transition-all disabled:opacity-50"
+                >
+                  {updateSettingsMutation.isPending ? 'Đang lưu...' : 'Lưu cài đặt phân quyền'}
                 </button>
               </div>
             </form>
