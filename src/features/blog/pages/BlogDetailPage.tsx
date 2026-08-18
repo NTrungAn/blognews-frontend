@@ -6,6 +6,26 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { getImageUrl } from '../../../utils/imageUrl';
 import { useToast, ToastContainer } from '../../../components/Toast';
 
+// ─── TTS Helpers ──────────────────────────────────────────────────────────────
+const guessVoiceGender = (voice: SpeechSynthesisVoice): 'Nam' | 'Nữ' | 'Khác' => {
+  const name = voice.name.toLowerCase();
+  const lang = voice.lang.toLowerCase();
+  
+  if (name.includes('female') || name.includes('woman') || name.includes('girl')) return 'Nữ';
+  if (name.includes('male') || name.includes('man') || name.includes('boy')) return 'Nam';
+  
+  const femaleNames = ['zira', 'hazel', 'samantha', 'victoria', 'karen', 'linh', 'mai'];
+  const maleNames = ['david', 'mark', 'daniel', 'alex', 'fred', 'microsoft an', 'nam', 'minh'];
+  
+  if (femaleNames.some(n => name.includes(n))) return 'Nữ';
+  if (maleNames.some(n => name.includes(n))) return 'Nam';
+  
+  // Default assumptions for some generic ones
+  if (lang.startsWith('vi') && name.includes('google')) return 'Nữ'; // Google Tiếng Việt is usually female
+  
+  return 'Khác';
+};
+
 // ─── Reading Progress Bar ─────────────────────────────────────────────────────
 function ReadingProgress() {
   const [progress, setProgress] = useState(0);
@@ -567,23 +587,34 @@ function BlogDetailPage() {
 
     const updateVoices = () => {
       const allVoices = synth.getVoices();
-      setVoices(allVoices);
+      
+      const enVoices = allVoices.filter(v => v.lang.toLowerCase().startsWith('en'));
+      const viVoices = allVoices.filter(v => v.lang.toLowerCase().startsWith('vi'));
+
+      const pickVoices = (voiceList: SpeechSynthesisVoice[]) => {
+        let male = voiceList.find(v => guessVoiceGender(v) === 'Nam');
+        let female = voiceList.find(v => guessVoiceGender(v) === 'Nữ');
+        
+        // Nếu không có voice nào được đánh dấu rõ Nam/Nữ, lấy đại voice khác nhau
+        if (!male) male = voiceList.find(v => v !== female);
+        if (!female) female = voiceList.find(v => v !== male);
+
+        const selected = [];
+        if (male) selected.push(male);
+        if (female && female !== male) selected.push(female);
+        return selected;
+      };
+
+      const finalVoices = [...pickVoices(viVoices), ...pickVoices(enVoices)];
+      setVoices(finalVoices);
 
       // Auto-select Vietnamese voice if available
-      if (allVoices.length > 0) {
-        const viVoice = allVoices.find(voice => {
-          const lang = voice.lang.toLowerCase();
-          const name = voice.name.toLowerCase();
-          return lang === 'vi-vn' || lang === 'vi_vn' || lang.startsWith('vi') || name.includes('vietnam') || name.includes('tiếng việt');
-        });
+      if (finalVoices.length > 0) {
+        const viVoice = finalVoices.find(voice => voice.lang.toLowerCase().startsWith('vi'));
         if (viVoice) {
           setSelectedVoiceName(viVoice.name);
         } else {
-          // Fallback to first available voice or default
-          const defaultVoice = allVoices.find(v => v.default) || allVoices[0];
-          if (defaultVoice) {
-            setSelectedVoiceName(defaultVoice.name);
-          }
+          setSelectedVoiceName(finalVoices[0].name);
         }
       }
     };
@@ -626,7 +657,7 @@ function BlogDetailPage() {
     utteranceRef.current = utterance;
 
     // Use selected voice or search for Vietnamese fallback
-    const activeVoices = voices.length > 0 ? voices : synth.getVoices();
+    const activeVoices = voices.length > 0 ? voices : synth.getVoices().filter(v => v.lang.toLowerCase().startsWith('vi') || v.lang.toLowerCase().startsWith('en'));
     let selectedVoice = activeVoices.find(v => v.name === selectedVoiceName);
     if (!selectedVoice) {
       selectedVoice = activeVoices.find(voice => {
@@ -1143,7 +1174,7 @@ function BlogDetailPage() {
                           setSelectedVoiceName(e.target.value);
                           if (isTtsPlaying && sentences.length > 0) {
                             setIsTtsPaused(false);
-                            const activeVoices = voices.length > 0 ? voices : window.speechSynthesis.getVoices();
+                            const activeVoices = voices.length > 0 ? voices : window.speechSynthesis.getVoices().filter(v => v.lang.toLowerCase().startsWith('vi') || v.lang.toLowerCase().startsWith('en'));
                             const newVoice = activeVoices.find(v => v.name === e.target.value);
                             if (newVoice) {
                               const synth = window.speechSynthesis;
@@ -1172,7 +1203,7 @@ function BlogDetailPage() {
                       >
                         {voices.map((voice) => (
                           <option key={voice.name} value={voice.name}>
-                            {voice.name}
+                            {voice.lang.toLowerCase().startsWith('vi') ? 'Tiếng Việt' : 'Tiếng Anh'} ({guessVoiceGender(voice)})
                           </option>
                         ))}
                       </select>

@@ -58,6 +58,8 @@ axiosInstance.interceptors.request.use(
 interface RefreshTokenResponse {
   accessToken: string;
   refreshToken: string;
+  tokenType: string;
+  expiresIn: number;
 }
 
 let isRefreshing = false;
@@ -96,13 +98,21 @@ const refreshAccessToken = async (): Promise<string> => {
   if (!refreshToken) throw new Error('No refresh token available');
 
   // Dùng axios thuần (không qua instance) để tránh vòng lặp interceptor
-  const response = await axios.post<RefreshTokenResponse>(
+  const response = await axios.post<any>(
     `${BASE_URL}/auth/refresh`,
     { refreshToken },
     { headers: { 'Content-Type': 'application/json' } },
   );
 
-  const { accessToken, refreshToken: newRefreshToken } = response.data;
+  // Bóc tách payload nếu server trả về dạng ApiResponse
+  const payload = (response.data && response.data.code && response.data.data)
+    ? response.data.data
+    : response.data;
+
+  const { accessToken, refreshToken: newRefreshToken } = payload;
+  if (!accessToken || !newRefreshToken) {
+    throw new Error('Invalid refresh token response');
+  }
   tokenService.setTokens(accessToken, newRefreshToken);
   return accessToken;
 };
@@ -126,7 +136,18 @@ axiosInstance.interceptors.response.use(
 
     // Tránh vòng lặp vô tận nếu chính request refresh token bị lỗi 401
     if (originalRequest.url?.includes('/auth/refresh')) {
-      handleLogout();
+      const status = error.response?.status;
+      const apiMessage = (error.response?.data as any)?.message;
+
+      if (status == 429) {
+        alert('⚠️ ' + (apiMessage || 'Bạn thao tác quá nhanh, vui lòng thử lại sau.'));
+      } else if (status === 401 && apiMessage && apiMessage.includes('sử dụng lại')) {
+        alert('⚠️ CẢNH BÁO BẢO MẬT: ' + apiMessage);
+      }
+
+      if (status === 401) {
+        handleLogout();
+      }
       return Promise.reject(error);
     }
 
@@ -158,8 +179,18 @@ axiosInstance.interceptors.response.use(
         originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
       }
       return axiosInstance(originalRequest);
-    } catch (refreshError) {
+    } catch (refreshError: any) {
       processQueue(refreshError, null);
+
+      const status = refreshError.response?.status;
+      const apiMessage = refreshError.response?.data?.message;
+
+      if (status === 429) {
+        alert('⚠️ ' + (apiMessage || 'Bạn thao tác quá nhanh, vui lòng thử lại sau.'));
+      } else if (status === 401 && apiMessage && apiMessage.includes('sử dụng lại')) {
+        alert('⚠️ CẢNH BÁO BẢO MẬT: ' + apiMessage);
+      }
+
       handleLogout();
       return Promise.reject(refreshError);
     } finally {

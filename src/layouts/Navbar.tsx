@@ -58,7 +58,7 @@ function Navbar() {
 
   return (
     <>
-      <header className="relative z-40 border-b border-[#0058be]/20 bg-white">
+      <header className="relative z-[60] border-b border-[#0058be]/20 bg-white">
       {/* ── Thanh tiện ích (cuộn theo trang) ── */}
       <div className="border-b border-[#0058be]/15 bg-[#0058be] text-[10px] text-[#d8e2ff]">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-1 sm:px-6">

@@ -43,6 +43,8 @@ export interface RefreshTokenRequest {
 export interface RefreshTokenResponse {
   accessToken: string;
   refreshToken: string;
+  tokenType: string;       // "Bearer"
+  expiresIn: number;       // seconds — thời gian sống của accessToken
 }
 
 // ─── Auth API ─────────────────────────────────────────────────────────────────

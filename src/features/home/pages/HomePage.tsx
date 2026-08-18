@@ -173,16 +173,16 @@ function HomePage() {
                   {/* Avatar */}
                   <Link to={`/author/${author.username}`} className="relative h-16 w-16 overflow-hidden rounded-full ring-2 ring-transparent group-hover:ring-[#0058be] transition-all">
                     {author.avatar ? (
-                      <img src={getImageUrl(author.avatar)} alt={author.fullName} className="h-full w-full object-cover" />
+                      <img src={getImageUrl(author.avatar)} alt={author.fullName || author.username} className="h-full w-full object-cover" />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center bg-[#d8e2ff] font-serif text-xl font-bold uppercase text-[#0058be]">
-                        {author.fullName.charAt(0)}
+                        {(author.fullName || author.username).charAt(0)}
                       </div>
                     )}
                   </Link>
 
                   <Link to={`/author/${author.username}`} className="mt-3 block font-bold text-[#191c1d] hover:text-[#0058be] transition-colors line-clamp-1">
-                    {author.fullName}
+                    {author.fullName || author.username}
                   </Link>
                   <span className="text-xs text-[#727785]">@{author.username}</span>
 
