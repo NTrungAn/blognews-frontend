@@ -55,13 +55,6 @@ axiosInstance.interceptors.request.use(
 
 // ─── Refresh Token Logic ──────────────────────────────────────────────────────
 
-interface RefreshTokenResponse {
-  accessToken: string;
-  refreshToken: string;
-  tokenType: string;
-  expiresIn: number;
-}
-
 let isRefreshing = false;
 // Hàng đợi các request bị block trong lúc đang refresh token
 let failedQueue: Array<{
@@ -139,7 +132,7 @@ axiosInstance.interceptors.response.use(
       const status = error.response?.status;
       const apiMessage = (error.response?.data as any)?.message;
 
-      if (status == 429) {
+      if ((status as number) === 429) {
         alert('⚠️ ' + (apiMessage || 'Bạn thao tác quá nhanh, vui lòng thử lại sau.'));
       } else if (status === 401 && apiMessage && apiMessage.includes('sử dụng lại')) {
         alert('⚠️ CẢNH BÁO BẢO MẬT: ' + apiMessage);
