@@ -37,4 +37,3 @@ LICENSE
 Docker/
 Dockerfile
 .dockerignore
-nginx.conf
